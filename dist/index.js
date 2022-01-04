@@ -48709,9 +48709,9 @@ async function main() {
     // build client
     console.log("Building client... (this may take a few minutes)");
     (0, node_child_process_1.execSync)("yarn workspace @snailycad/client build", { cwd: projectDir });
-    console.log(`SnailyCADv4 was successfully installed and setup.
+    console.log(`>> SnailyCADv4 was successfully installed and setup.
 
-> follow these instructions to start SnailyCADv4: https://cad-docs.netlify.app/install/methods/standalone#starting-snailycadv4
+>> follow these instructions to start SnailyCADv4: https://cad-docs.netlify.app/install/methods/standalone#starting-snailycadv4
 `);
 }
 
@@ -48766,51 +48766,75 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.askEnvQuestions = void 0;
 const inquirer_1 = __importDefault(__nccwpck_require__(90019));
+function requiredField(input) {
+    if (input.toString().trim() === "") {
+        return "You must enter a value.";
+    }
+    return true;
+}
 async function askEnvQuestions() {
     const answers = await inquirer_1.default.prompt([
         {
             name: "POSTGRES_PASSWORD",
-            type: "input",
+            type: "password",
             message: "What's the password to your PostgreSQL database?",
+            validate: requiredField,
         },
         {
             name: "POSTGRES_USER",
             type: "input",
             message: "What's the username to your PostgreSQL database?",
+            validate: requiredField,
             default: "postgres",
         },
         {
             name: "DB_HOST",
             type: "input",
             message: "What's the host to your PostgreSQL database?",
+            validate: requiredField,
             default: "localhost",
         },
         {
             name: "DB_PORT",
             type: "number",
             message: "What's the port to your PostgreSQL database?",
+            validate: requiredField,
             default: 5432,
         },
         {
             name: "POSTGRES_DB",
             type: "input",
             message: "What's the database name to your PostgreSQL database?",
+            validate: requiredField,
             default: "snaily-cadv4",
         },
         {
             name: "JWT_SECRET",
             type: "input",
             message: "Please enter a secure string. This can be any random string:",
+            validate: requiredField,
         },
         {
             name: "CORS_ORIGIN_URL",
             type: "input",
             message: "Where will the client (UI/interface) be hosted at? (Example: http://99.99.0.190:3000)",
+            validate: (input) => {
+                if (!input.startsWith("http")) {
+                    return "URL must start with either `http://` or `https://`";
+                }
+                return true;
+            },
         },
         {
             name: "NEXT_PUBLIC_PROD_ORIGIN",
             type: "input",
             message: "Where will the API be hosted at? (Example: http://99.99.0.190:8080/v1)",
+            validate: (input) => {
+                if (!input.startsWith("http")) {
+                    return "URL must start with either `http://` or `https://`";
+                }
+                return true;
+            },
         },
     ]);
     return answers;
