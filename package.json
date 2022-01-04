@@ -1,0 +1,34 @@
+{
+  "name": "autoinstaller",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsup",
+    "build:ncc": "ncc build ./src/script.ts -t -e meow -e inquirer -e dotenv -o dist/"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/inquirer": "^8.1.3",
+    "@types/node": "^17.0.7",
+    "dotenv": "^10.0.0",
+    "esbuild": "^0.14.10",
+    "@vercel/ncc": "^0.33.1",
+    "tsup": "^5.11.10",
+    "typescript": "^4.5.4"
+  },
+  "tsup": {
+    "entry": [
+      "src/**/*.ts"
+    ],
+    "bundle": true,
+    "platform": "node",
+    "target": "node12"
+  },
+  "dependencies": {
+    "inquirer": "^8.2.0",
+    "meow": "^9.0.0"
+  }
+}

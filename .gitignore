@@ -1,0 +1,6 @@
+.env
+node_modules
+snaily-cadv4
+
+# dist is not being ignored so the script can be installed directly from github.
+# dist
