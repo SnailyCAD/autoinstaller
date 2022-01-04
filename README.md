@@ -9,5 +9,3 @@ curl https://raw.githubusercontent.com/SnailyCAD/autoinstaller/main/dist/index.j
 
 node script.js
 ```
-
-> TODO
