@@ -4,4 +4,10 @@ A script to install SnailyCAD a bit quicker with interactive prompts in the cons
 
 ## Setup
 
+```sh
+curl https://raw.githubusercontent.com/SnailyCAD/autoinstaller/main/dist/index.js > script.js
+
+node script.js
+```
+
 > TODO

@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build:tsup": "tsup",
-    "build": "ncc build ./src/script.ts -t -e meow -e inquirer -e dotenv -o dist/"
+    "build": "ncc build ./src/script.ts -t -o dist/"
   },
   "keywords": [],
   "author": "",
