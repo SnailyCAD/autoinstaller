@@ -8,6 +8,8 @@ import { cloneProject } from "./utils/cloneProject";
 import { askEnvQuestions } from "./utils/envQuestions";
 import { updateEnvFile } from "./utils/updateEnvFile";
 
+const __IS_DEV__ = process.env.NODE_ENV === "development";
+
 main()
   .then(() => process.exit(0))
   .catch((e) => {
@@ -16,7 +18,7 @@ main()
   });
 
 async function main() {
-  if (process.env.NODE_ENV === "development") {
+  if (__IS_DEV__) {
     fs.rmSync("snaily-cadv4", { recursive: true, force: true });
   }
 
@@ -43,13 +45,15 @@ async function main() {
         ).dir,
   );
 
-  console.log({ projectDir });
+  if (__IS_DEV__) {
+    console.log({ projectDir });
+  }
 
   const cloned = await cloneProject(projectDir);
   if (!cloned) return;
 
   // install dependencies
-  console.log("Installing dependencies...");
+  console.log("Installing dependencies... (this may take a few minutes)");
   execSync("yarn", { cwd: projectDir });
 
   // copy .env file
@@ -57,16 +61,41 @@ async function main() {
   const envExampleFile = path.resolve(projectDir, ".env.example");
   const envFileDestination = path.resolve(projectDir, ".env");
 
-  console.log({
-    envExampleFile,
-    envFileDestination,
-  });
+  if (__IS_DEV__) {
+    console.log({
+      envExampleFile,
+      envFileDestination,
+    });
+  }
 
   await fs.copyFileSync(envExampleFile, envFileDestination);
   console.log(".env copied");
 
   const answers = await askEnvQuestions();
 
-  console.log({ answers });
+  if (__IS_DEV__) {
+    console.log({ answers });
+  }
+
+  // update .env file with answers
+  console.log("Updating .env file...");
   await updateEnvFile(projectDir, answers);
+
+  // copy .env file to client & api
+  execSync("node scripts/copy-env.mjs --client --api", { cwd: projectDir });
+
+  // build util packages
+  console.log("Building util packages...");
+  execSync("yarn workspace @snailycad/schemas build && yarn workspace @snailycad/config build", {
+    cwd: projectDir,
+  });
+
+  // build client
+  console.log("Building client... (this may take a few minutes)");
+  execSync("yarn workspace @snailycad/client build", { cwd: projectDir });
+
+  console.log(`SnailyCADv4 was successfully installed and setup.
+
+> follow these instructions to start SnailyCADv4: https://cad-docs.netlify.app/install/methods/standalone#starting-snailycadv4
+`);
 }

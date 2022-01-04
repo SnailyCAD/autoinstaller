@@ -207,6 +207,7 @@ const inquirer_1 = __importDefault(__nccwpck_require__(131));
 const cloneProject_1 = __nccwpck_require__(149);
 const envQuestions_1 = __nccwpck_require__(555);
 const updateEnvFile_1 = __nccwpck_require__(305);
+const __IS_DEV__ = process.env.NODE_ENV === "development";
 main()
     .then(() => process.exit(0))
     .catch((e) => {
@@ -214,7 +215,7 @@ main()
     process.exit(1);
 });
 async function main() {
-    if (process.env.NODE_ENV === "development") {
+    if (__IS_DEV__) {
         node_fs_1.default.rmSync("snaily-cadv4", { recursive: true, force: true });
     }
     const { input } = (0, meow_1.default)("help", {
@@ -233,7 +234,9 @@ async function main() {
                 default: "./snaily-cadv4",
             },
         ])).dir);
-    console.log({ projectDir });
+    if (__IS_DEV__) {
+        console.log({ projectDir });
+    }
     const cloned = await (0, cloneProject_1.cloneProject)(projectDir);
     if (!cloned)
         return;
@@ -244,15 +247,35 @@ async function main() {
     console.log("Copying .env file...");
     const envExampleFile = node_path_1.default.resolve(projectDir, ".env.example");
     const envFileDestination = node_path_1.default.resolve(projectDir, ".env");
-    console.log({
-        envExampleFile,
-        envFileDestination,
-    });
+    if (__IS_DEV__) {
+        console.log({
+            envExampleFile,
+            envFileDestination,
+        });
+    }
     await node_fs_1.default.copyFileSync(envExampleFile, envFileDestination);
     console.log(".env copied");
     const answers = await (0, envQuestions_1.askEnvQuestions)();
-    console.log({ answers });
+    if (__IS_DEV__) {
+        console.log({ answers });
+    }
+    // update .env file with answers
+    console.log("Updating .env file...");
     await (0, updateEnvFile_1.updateEnvFile)(projectDir, answers);
+    // copy .env file to client & api
+    (0, node_child_process_1.execSync)("node scripts/copy-env.mjs --client --api", { cwd: projectDir });
+    // build util packages
+    console.log("Building util packages...");
+    (0, node_child_process_1.execSync)("yarn workspace @snailycad/schemas build && yarn workspace @snailycad/config build", {
+        cwd: projectDir,
+    });
+    // build client
+    console.log("Building client...");
+    (0, node_child_process_1.execSync)("yarn workspace @snailycad/client build", { cwd: projectDir });
+    console.log(`SnailyCADv4 was successfully installed and setup.
+
+> follow these instructions to start SnailyCADv4: https://cad-docs.netlify.app/install/methods/standalone#starting-snailycadv4
+`);
 }
 
 
@@ -386,7 +409,7 @@ async function updateEnvFile(projectDir, answers) {
         const newValue = `${key}"${answer}"`;
         fileContents = fileContents.replace(match, newValue);
     });
-    console.log({ fileContents });
+    node_fs_1.default.writeFileSync(envFilePath, fileContents);
 }
 exports.updateEnvFile = updateEnvFile;
 function extractKeyAndValue(match) {

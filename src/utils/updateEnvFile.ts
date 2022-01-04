@@ -23,8 +23,7 @@ export async function updateEnvFile(
     fileContents = fileContents.replace(match!, newValue);
   });
 
-  console.log({ fileContents });
-  // todo: fs.writeFileSync...
+  fs.writeFileSync(envFilePath, fileContents);
 }
 
 function extractKeyAndValue(match: string): [string, string] {
