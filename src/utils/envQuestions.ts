@@ -1,7 +1,17 @@
 import inquirer from "inquirer";
 
+export type ENV_KEYS =
+  | "POSTGRES_PASSWORD"
+  | "POSTGRES_USER"
+  | "DB_HOST"
+  | "DB_PORT"
+  | "POSTGRES_DB"
+  | "JWT_SECRET"
+  | "CORS_ORIGIN_URL"
+  | "NEXT_PUBLIC_PROD_ORIGIN";
+
 export async function askEnvQuestions() {
-  const answers = await inquirer.prompt([
+  const answers = await inquirer.prompt<Record<ENV_KEYS, string | number>>([
     {
       name: "POSTGRES_PASSWORD",
       type: "input",

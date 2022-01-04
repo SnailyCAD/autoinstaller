@@ -206,6 +206,7 @@ const meow_1 = __importDefault(__nccwpck_require__(887));
 const inquirer_1 = __importDefault(__nccwpck_require__(131));
 const cloneProject_1 = __nccwpck_require__(149);
 const envQuestions_1 = __nccwpck_require__(555);
+const updateEnvFile_1 = __nccwpck_require__(305);
 main()
     .then(() => process.exit(0))
     .catch((e) => {
@@ -251,6 +252,7 @@ async function main() {
     console.log(".env copied");
     const answers = await (0, envQuestions_1.askEnvQuestions)();
     console.log({ answers });
+    await (0, updateEnvFile_1.updateEnvFile)(projectDir, answers);
 }
 
 
@@ -354,6 +356,44 @@ async function askEnvQuestions() {
     return answers;
 }
 exports.askEnvQuestions = askEnvQuestions;
+
+
+/***/ }),
+
+/***/ 305:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.updateEnvFile = void 0;
+const node_fs_1 = __importDefault(__nccwpck_require__(561));
+const node_path_1 = __importDefault(__nccwpck_require__(411));
+async function updateEnvFile(projectDir, answers) {
+    const envFilePath = node_path_1.default.resolve(projectDir, ".env");
+    let fileContents = node_fs_1.default.readFileSync(envFilePath, { encoding: "utf-8" });
+    // regex from: https://regexr.com/6cmr2
+    const regex = /[\S]\w+="([^"\\]*(?:\\.[^"\\]*)*)"/g;
+    const matches = fileContents.matchAll(regex);
+    [...matches]?.forEach(([match]) => {
+        const [key] = extractKeyAndValue(match);
+        const answer = answers[key.replace("=", "")];
+        if (!answer)
+            return;
+        const newValue = `${key}"${answer}"`;
+        fileContents = fileContents.replace(match, newValue);
+    });
+    console.log({ fileContents });
+}
+exports.updateEnvFile = updateEnvFile;
+function extractKeyAndValue(match) {
+    const key = match.match(/[\S]\w+=/)?.[0] ?? "";
+    const value = match.match(/"([^"\\]*(?:\\.[^"\\]*)*)"/)?.[0] ?? "";
+    return [key, value];
+}
 
 
 /***/ }),

@@ -4,8 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "tsup",
-    "build:ncc": "ncc build ./src/script.ts -t -e meow -e inquirer -e dotenv -o dist/"
+    "build:tsup": "tsup",
+    "build": "ncc build ./src/script.ts -t -e meow -e inquirer -e dotenv -o dist/"
   },
   "keywords": [],
   "author": "",

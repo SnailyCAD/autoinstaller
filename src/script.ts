@@ -6,6 +6,7 @@ import meow from "meow";
 import inquirer from "inquirer";
 import { cloneProject } from "./utils/cloneProject";
 import { askEnvQuestions } from "./utils/envQuestions";
+import { updateEnvFile } from "./utils/updateEnvFile";
 
 main()
   .then(() => process.exit(0))
@@ -65,5 +66,7 @@ async function main() {
   console.log(".env copied");
 
   const answers = await askEnvQuestions();
+
   console.log({ answers });
+  await updateEnvFile(projectDir, answers);
 }
