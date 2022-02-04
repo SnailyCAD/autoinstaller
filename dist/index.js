@@ -48701,14 +48701,9 @@ async function main() {
     await (0, updateEnvFile_1.updateEnvFile)(projectDir, answers);
     // copy .env file to client & api
     (0, node_child_process_1.execSync)("node scripts/copy-env.mjs --client --api", { cwd: projectDir });
-    // build util packages
-    console.log("Building util packages...");
-    (0, node_child_process_1.execSync)("yarn workspace @snailycad/schemas build && yarn workspace @snailycad/config build", {
-        cwd: projectDir,
-    });
-    // build client
-    console.log("Building client... (this may take a few minutes)");
-    (0, node_child_process_1.execSync)("yarn workspace @snailycad/client build", { cwd: projectDir });
+    // build packages
+    console.log("Building packages... (this may take a few minutes)");
+    (0, node_child_process_1.execSync)("yarn turbo run build", { cwd: projectDir });
     console.log(`>> SnailyCADv4 was successfully installed and setup.
 
 >> follow these instructions to start SnailyCADv4: https://cad-docs.netlify.app/install/methods/standalone#starting-snailycadv4
@@ -48819,6 +48814,9 @@ async function askEnvQuestions() {
             type: "input",
             message: "Where will the client (UI/interface) be hosted at? (Example: http://99.99.0.190:3000)",
             validate: (input) => {
+                if (input.toString().trim() === "") {
+                    return "You must enter a value.";
+                }
                 if (!input.startsWith("http")) {
                     return "URL must start with either `http://` or `https://`";
                 }
@@ -48830,6 +48828,9 @@ async function askEnvQuestions() {
             type: "input",
             message: "Where will the API be hosted at? (Example: http://99.99.0.190:8080/v1)",
             validate: (input) => {
+                if (input.toString().trim() === "") {
+                    return "You must enter a value.";
+                }
                 if (!input.startsWith("http")) {
                     return "URL must start with either `http://` or `https://`";
                 }
