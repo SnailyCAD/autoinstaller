@@ -47430,6 +47430,11 @@ async function askEnvQuestions() {
                 return true;
             },
         },
+        {
+            name: "DOMAIN",
+            type: "input",
+            message: "If you're using a (sub)domain, what's your top level domain? (Example: mysite.com)",
+        },
     ]);
     return answers;
 }

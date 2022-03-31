@@ -8,7 +8,8 @@ export type ENV_KEYS =
   | "POSTGRES_DB"
   | "JWT_SECRET"
   | "CORS_ORIGIN_URL"
-  | "NEXT_PUBLIC_PROD_ORIGIN";
+  | "NEXT_PUBLIC_PROD_ORIGIN"
+  | "DOMAIN";
 
 function requiredField(input: string) {
   if (input.toString().trim() === "") {
@@ -92,6 +93,11 @@ export async function askEnvQuestions() {
 
         return true;
       },
+    },
+    {
+      name: "DOMAIN",
+      type: "input",
+      message: "If you're using a (sub)domain, what's your top level domain? (Example: mysite.com)",
     },
   ]);
 
