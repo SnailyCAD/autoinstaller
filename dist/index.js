@@ -5468,8 +5468,6 @@ module.exports = function(options, defaults) {
 /***/ 44227:
 /***/ ((__unused_webpack_module, __unused_webpack_exports, __nccwpck_require__) => {
 
-/* @flow */
-
 (function () {
   (__nccwpck_require__(12437).config)(
     Object.assign(
@@ -5486,11 +5484,9 @@ module.exports = function(options, defaults) {
 /***/ 35478:
 /***/ ((module) => {
 
-/* @flow */
+const re = /^dotenv_config_(encoding|path|debug|override)=(.+)$/
 
-const re = /^dotenv_config_(encoding|path|debug)=(.+)$/
-
-module.exports = function optionMatcher (args /*: Array<string> */) {
+module.exports = function optionMatcher (args) {
   return args.reduce(function (acc, cur) {
     const matches = cur.match(re)
     if (matches) {
@@ -5505,8 +5501,6 @@ module.exports = function optionMatcher (args /*: Array<string> */) {
 
 /***/ 95158:
 /***/ ((module) => {
-
-/* @flow */
 
 // ../config.js accepts options via environment variables
 const options = {}
@@ -5523,6 +5517,10 @@ if (process.env.DOTENV_CONFIG_DEBUG != null) {
   options.debug = process.env.DOTENV_CONFIG_DEBUG
 }
 
+if (process.env.DOTENV_CONFIG_OVERRIDE != null) {
+  options.override = process.env.DOTENV_CONFIG_OVERRIDE
+}
+
 module.exports = options
 
 
@@ -5531,124 +5529,115 @@ module.exports = options
 /***/ 12437:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
-/* @flow */
-/*::
-
-type DotenvParseOptions = {
-  debug?: boolean
-}
-
-// keys and values from src
-type DotenvParseOutput = { [string]: string }
-
-type DotenvConfigOptions = {
-  path?: string, // path to .env file
-  encoding?: string, // encoding of .env file
-  debug?: string // turn on logging for debugging purposes
-}
-
-type DotenvConfigOutput = {
-  parsed?: DotenvParseOutput,
-  error?: Error
-}
-
-*/
-
 const fs = __nccwpck_require__(57147)
 const path = __nccwpck_require__(71017)
 const os = __nccwpck_require__(22037)
 
-function log (message /*: string */) {
-  console.log(`[dotenv][DEBUG] ${message}`)
-}
+const LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg
 
-const NEWLINE = '\n'
-const RE_INI_KEY_VAL = /^\s*([\w.-]+)\s*=\s*(.*)?\s*$/
-const RE_NEWLINES = /\\n/g
-const NEWLINES_MATCH = /\r\n|\n|\r/
-
-// Parses src into an Object
-function parse (src /*: string | Buffer */, options /*: ?DotenvParseOptions */) /*: DotenvParseOutput */ {
-  const debug = Boolean(options && options.debug)
+// Parser src into an Object
+function parse (src) {
   const obj = {}
 
-  // convert Buffers before splitting into lines and processing
-  src.toString().split(NEWLINES_MATCH).forEach(function (line, idx) {
-    // matching "KEY' and 'VAL' in 'KEY=VAL'
-    const keyValueArr = line.match(RE_INI_KEY_VAL)
-    // matched?
-    if (keyValueArr != null) {
-      const key = keyValueArr[1]
-      // default undefined or missing values to empty string
-      let val = (keyValueArr[2] || '')
-      const end = val.length - 1
-      const isDoubleQuoted = val[0] === '"' && val[end] === '"'
-      const isSingleQuoted = val[0] === "'" && val[end] === "'"
+  // Convert buffer to string
+  let lines = src.toString()
 
-      // if single or double quoted, remove quotes
-      if (isSingleQuoted || isDoubleQuoted) {
-        val = val.substring(1, end)
+  // Convert line breaks to same format
+  lines = lines.replace(/\r\n?/mg, '\n')
 
-        // if double quoted, expand newlines
-        if (isDoubleQuoted) {
-          val = val.replace(RE_NEWLINES, NEWLINE)
-        }
-      } else {
-        // remove surrounding whitespace
-        val = val.trim()
-      }
+  let match
+  while ((match = LINE.exec(lines)) != null) {
+    const key = match[1]
 
-      obj[key] = val
-    } else if (debug) {
-      log(`did not match key and value when parsing line ${idx + 1}: ${line}`)
+    // Default undefined or null to empty string
+    let value = (match[2] || '')
+
+    // Remove whitespace
+    value = value.trim()
+
+    // Check if double quoted
+    const maybeQuote = value[0]
+
+    // Remove surrounding quotes
+    value = value.replace(/^(['"`])([\s\S]*)\1$/mg, '$2')
+
+    // Expand newlines if double quoted
+    if (maybeQuote === '"') {
+      value = value.replace(/\\n/g, '\n')
+      value = value.replace(/\\r/g, '\r')
     }
-  })
+
+    // Add to object
+    obj[key] = value
+  }
 
   return obj
 }
 
-function resolveHome (envPath) {
+function _log (message) {
+  console.log(`[dotenv][DEBUG] ${message}`)
+}
+
+function _resolveHome (envPath) {
   return envPath[0] === '~' ? path.join(os.homedir(), envPath.slice(1)) : envPath
 }
 
 // Populates process.env from .env file
-function config (options /*: ?DotenvConfigOptions */) /*: DotenvConfigOutput */ {
+function config (options) {
   let dotenvPath = path.resolve(process.cwd(), '.env')
-  let encoding /*: string */ = 'utf8'
-  let debug = false
+  let encoding = 'utf8'
+  const debug = Boolean(options && options.debug)
+  const override = Boolean(options && options.override)
 
   if (options) {
     if (options.path != null) {
-      dotenvPath = resolveHome(options.path)
+      dotenvPath = _resolveHome(options.path)
     }
     if (options.encoding != null) {
       encoding = options.encoding
     }
-    if (options.debug != null) {
-      debug = true
-    }
   }
 
   try {
-    // specifying an encoding returns a string instead of a buffer
-    const parsed = parse(fs.readFileSync(dotenvPath, { encoding }), { debug })
+    // Specifying an encoding returns a string instead of a buffer
+    const parsed = DotenvModule.parse(fs.readFileSync(dotenvPath, { encoding }))
 
     Object.keys(parsed).forEach(function (key) {
       if (!Object.prototype.hasOwnProperty.call(process.env, key)) {
         process.env[key] = parsed[key]
-      } else if (debug) {
-        log(`"${key}" is already defined in \`process.env\` and will not be overwritten`)
+      } else {
+        if (override === true) {
+          process.env[key] = parsed[key]
+        }
+
+        if (debug) {
+          if (override === true) {
+            _log(`"${key}" is already defined in \`process.env\` and WAS overwritten`)
+          } else {
+            _log(`"${key}" is already defined in \`process.env\` and was NOT overwritten`)
+          }
+        }
       }
     })
 
     return { parsed }
   } catch (e) {
+    if (debug) {
+      _log(`Failed to load ${dotenvPath} ${e.message}`)
+    }
+
     return { error: e }
   }
 }
 
-module.exports.config = config
-module.exports.parse = parse
+const DotenvModule = {
+  config,
+  parse
+}
+
+module.exports.config = DotenvModule.config
+module.exports.parse = DotenvModule.parse
+module.exports = DotenvModule
 
 
 /***/ }),
@@ -10084,16 +10073,10 @@ inquirer.restoreDefaultPrompts = function () {
 /***/ }),
 
 /***/ 96235:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+/***/ ((module) => {
 
 "use strict";
 
-const _ = {
-  isString: __nccwpck_require__(65704),
-  isNumber: __nccwpck_require__(10966),
-  extend: __nccwpck_require__(25273),
-  isFunction: __nccwpck_require__(17799),
-};
 
 /**
  * Choice object
@@ -10111,19 +10094,19 @@ module.exports = class Choice {
       return val;
     }
 
-    if (_.isString(val) || _.isNumber(val)) {
+    if (typeof val === 'string' || typeof val === 'number') {
       this.name = String(val);
       this.value = val;
       this.short = String(val);
     } else {
-      _.extend(this, val, {
+      Object.assign(this, val, {
         name: val.name || val.value,
         value: 'value' in val ? val.value : val.name,
         short: val.short || val.name || val.value,
       });
     }
 
-    if (_.isFunction(val.disabled)) {
+    if (typeof val.disabled === 'function') {
       this.disabled = val.disabled(answers);
     } else {
       this.disabled = val.disabled;
@@ -10141,10 +10124,8 @@ module.exports = class Choice {
 
 const assert = __nccwpck_require__(39491);
 const _ = {
-  isNumber: __nccwpck_require__(10966),
   filter: __nccwpck_require__(33779),
   map: __nccwpck_require__(78101),
-  find: __nccwpck_require__(93986),
 };
 const Separator = __nccwpck_require__(46054);
 const Choice = __nccwpck_require__(96235);
@@ -10152,11 +10133,9 @@ const Choice = __nccwpck_require__(96235);
 /**
  * Choices collection
  * Collection of multiple `choice` object
- * @constructor
- * @param {Array} choices  All `choice` to keep in the collection
  */
-
 module.exports = class Choices {
+  /** @param {Array} choices  All `choice` to keep in the collection */
   constructor(choices, answers) {
     this.choices = choices.map((val) => {
       if (val.type === 'separator') {
@@ -10200,7 +10179,7 @@ module.exports = class Choices {
    */
 
   getChoice(selector) {
-    assert(_.isNumber(selector));
+    assert(typeof selector === 'number');
     return this.realChoices[selector];
   }
 
@@ -10211,7 +10190,7 @@ module.exports = class Choices {
    */
 
   get(selector) {
-    assert(_.isNumber(selector));
+    assert(typeof selector === 'number');
     return this.choices[selector];
   }
 
@@ -10253,11 +10232,11 @@ module.exports = class Choices {
   }
 
   find(func) {
-    return _.find(this.choices, func);
+    return this.choices.find(func);
   }
 
   push(...args) {
-    const objs = _.map(args, (val) => new Choice(val));
+    const objs = args.map((val) => new Choice(val));
     this.choices.push(...objs);
     this.realChoices = this.choices
       .filter(Separator.exclude)
@@ -10324,7 +10303,6 @@ module.exports = Separator;
  * Should be extended by prompt types.
  */
 const _ = {
-  assign: __nccwpck_require__(34874),
   defaults: __nccwpck_require__(3508),
   clone: __nccwpck_require__(57498),
 };
@@ -10337,7 +10315,7 @@ const ScreenManager = __nccwpck_require__(76227);
 class Prompt {
   constructor(question, rl, answers) {
     // Setup instance defaults property
-    _.assign(this, {
+    Object.assign(this, {
       answers,
       status: 'pending',
     });
@@ -10512,11 +10490,6 @@ module.exports = Prompt;
  * `list` type prompt
  */
 
-const _ = {
-  isArray: __nccwpck_require__(44869),
-  map: __nccwpck_require__(78101),
-  isString: __nccwpck_require__(65704),
-};
 const chalk = __nccwpck_require__(14412);
 const cliCursor = __nccwpck_require__(19482);
 const figures = __nccwpck_require__(57099);
@@ -10534,7 +10507,7 @@ class CheckboxPrompt extends Base {
       this.throwParamError('choices');
     }
 
-    if (_.isArray(this.opt.default)) {
+    if (Array.isArray(this.opt.default)) {
       this.opt.choices.forEach(function (choice) {
         if (this.opt.default.indexOf(choice.value) >= 0) {
           choice.checked = true;
@@ -10678,8 +10651,8 @@ class CheckboxPrompt extends Base {
       (choice) => Boolean(choice.checked) && !choice.disabled
     );
 
-    this.selection = _.map(choices, 'short');
-    return _.map(choices, 'value');
+    this.selection = choices.map((choice) => choice.short);
+    return choices.map((choice) => choice.value);
   }
 
   onUpKey() {
@@ -10758,7 +10731,9 @@ function renderChoices(choices, pointer) {
     if (choice.disabled) {
       separatorOffset++;
       output += ' - ' + choice.name;
-      output += ' (' + (_.isString(choice.disabled) ? choice.disabled : 'Disabled') + ')';
+      output += ` (${
+        typeof choice.disabled === 'string' ? choice.disabled : 'Disabled'
+      })`;
     } else {
       const line = getCheckbox(choice.checked) + ' ' + choice.name;
       if (i - separatorOffset === pointer) {
@@ -10798,10 +10773,6 @@ module.exports = CheckboxPrompt;
  * `confirm` type prompt
  */
 
-const _ = {
-  extend: __nccwpck_require__(25273),
-  isBoolean: __nccwpck_require__(61009),
-};
 const chalk = __nccwpck_require__(14412);
 const { take, takeUntil } = __nccwpck_require__(50749);
 const Base = __nccwpck_require__(40897);
@@ -10813,7 +10784,7 @@ class ConfirmPrompt extends Base {
 
     let rawDefault = true;
 
-    _.extend(this.opt, {
+    Object.assign(this.opt, {
       filter(input) {
         let value = rawDefault;
         if (input != null && input !== '') {
@@ -10824,8 +10795,8 @@ class ConfirmPrompt extends Base {
       },
     });
 
-    if (_.isBoolean(this.opt.default)) {
-      rawDefault = this.opt.default;
+    if (this.opt.default != null) {
+      rawDefault = Boolean(this.opt.default);
     }
 
     this.opt.default = rawDefault ? 'Y/n' : 'y/N';
@@ -11016,12 +10987,6 @@ module.exports = EditorPrompt;
  * `rawlist` type prompt
  */
 
-const _ = {
-  uniq: __nccwpck_require__(89482),
-  isString: __nccwpck_require__(65704),
-  isNumber: __nccwpck_require__(10966),
-  findIndex: __nccwpck_require__(98253),
-};
 const chalk = __nccwpck_require__(14412);
 const { map, takeUntil } = __nccwpck_require__(50749);
 const Base = __nccwpck_require__(40897);
@@ -11234,7 +11199,7 @@ class ExpandPrompt extends Base {
     if (errors.length) {
       throw new Error(
         'Duplicate key error: `key` param must be unique. Duplicates: ' +
-          _.uniq(errors).join(', ')
+          [...new Set(errors)].join(',')
       );
     }
   }
@@ -11247,13 +11212,10 @@ class ExpandPrompt extends Base {
    */
   generateChoicesString(choices, defaultChoice) {
     let defIndex = choices.realLength - 1;
-    if (_.isNumber(defaultChoice) && this.opt.choices.getChoice(defaultChoice)) {
+    if (typeof defaultChoice === 'number' && this.opt.choices.getChoice(defaultChoice)) {
       defIndex = defaultChoice;
-    } else if (_.isString(defaultChoice)) {
-      const index = _.findIndex(
-        choices.realChoices,
-        ({ value }) => value === defaultChoice
-      );
+    } else if (typeof defaultChoice === 'string') {
+      const index = choices.realChoices.findIndex(({ value }) => value === defaultChoice);
       defIndex = index === -1 ? defIndex : index;
     }
 
@@ -11424,11 +11386,6 @@ module.exports = InputPrompt;
  * `list` type prompt
  */
 
-const _ = {
-  isNumber: __nccwpck_require__(10966),
-  findIndex: __nccwpck_require__(98253),
-  isString: __nccwpck_require__(65704),
-};
 const chalk = __nccwpck_require__(14412);
 const figures = __nccwpck_require__(57099);
 const cliCursor = __nccwpck_require__(19482);
@@ -11453,13 +11410,10 @@ class ListPrompt extends Base {
     const def = this.opt.default;
 
     // If def is a Number, then use as index. Otherwise, check for value.
-    if (_.isNumber(def) && def >= 0 && def < this.opt.choices.realLength) {
+    if (typeof def === 'number' && def >= 0 && def < this.opt.choices.realLength) {
       this.selected = def;
-    } else if (!_.isNumber(def) && def != null) {
-      const index = _.findIndex(
-        this.opt.choices.realChoices,
-        ({ value }) => value === def
-      );
+    } else if (typeof def !== 'number' && def != null) {
+      const index = this.opt.choices.realChoices.findIndex(({ value }) => value === def);
       this.selected = Math.max(index, 0);
     }
 
@@ -11615,7 +11569,9 @@ function listRender(choices, pointer) {
     if (choice.disabled) {
       separatorOffset++;
       output += '  - ' + choice.name;
-      output += ' (' + (_.isString(choice.disabled) ? choice.disabled : 'Disabled') + ')';
+      output += ` (${
+        typeof choice.disabled === 'string' ? choice.disabled : 'Disabled'
+      })`;
       output += '\n';
       return;
     }
@@ -11818,11 +11774,6 @@ module.exports = PasswordPrompt;
  * `rawlist` type prompt
  */
 
-const _ = {
-  extend: __nccwpck_require__(25273),
-  isNumber: __nccwpck_require__(10966),
-  findIndex: __nccwpck_require__(98253),
-};
 const chalk = __nccwpck_require__(14412);
 const { map, takeUntil } = __nccwpck_require__(50749);
 const Base = __nccwpck_require__(40897);
@@ -11835,6 +11786,9 @@ class RawListPrompt extends Base {
   constructor(questions, rl, answers) {
     super(questions, rl, answers);
 
+    this.hiddenLine = '';
+    this.lastKey = '';
+
     if (!this.opt.choices) {
       this.throwParamError('choices');
     }
@@ -11844,21 +11798,18 @@ class RawListPrompt extends Base {
     this.selected = 0;
     this.rawDefault = 0;
 
-    _.extend(this.opt, {
+    Object.assign(this.opt, {
       validate(val) {
         return val != null;
       },
     });
 
     const def = this.opt.default;
-    if (_.isNumber(def) && def >= 0 && def < this.opt.choices.realLength) {
+    if (typeof def === 'number' && def >= 0 && def < this.opt.choices.realLength) {
       this.selected = def;
       this.rawDefault = def;
-    } else if (!_.isNumber(def) && def != null) {
-      const index = _.findIndex(
-        this.opt.choices.realChoices,
-        ({ value }) => value === def
-      );
+    } else if (typeof def !== 'number' && def != null) {
+      const index = this.opt.choices.realChoices.findIndex(({ value }) => value === def);
       const safeIndex = Math.max(index, 0);
       this.selected = safeIndex;
       this.rawDefault = safeIndex;
@@ -11968,7 +11919,14 @@ class RawListPrompt extends Base {
    */
 
   onKeypress() {
-    const index = this.rl.line.length ? Number(this.rl.line) - 1 : 0;
+    let index;
+
+    if (this.lastKey === 'arrow') {
+      index = this.hiddenLine.length ? Number(this.hiddenLine) - 1 : 0;
+    } else {
+      index = this.rl.line.length ? Number(this.rl.line) - 1 : 0;
+    }
+    this.lastKey = '';
 
     if (this.opt.choices.getChoice(index)) {
       this.selected = index;
@@ -12000,8 +11958,10 @@ class RawListPrompt extends Base {
    */
 
   onArrowKey(type) {
-    this.selected = incrementListIndex(this.selected, type, this.opt);
-    this.rl.line = String(this.selected + 1);
+    this.selected = incrementListIndex(this.selected, type, this.opt) || 0;
+    this.hiddenLine = String(this.selected + 1);
+    this.rl.line = '';
+    this.lastKey = 'arrow';
   }
 }
 
@@ -12016,7 +11976,7 @@ function renderChoices(choices, pointer) {
   let separatorOffset = 0;
 
   choices.forEach((choice, i) => {
-    output += '\n  ';
+    output += output ? '\n  ' : '  ';
 
     if (choice.type === 'separator') {
       separatorOffset++;
@@ -12046,10 +12006,6 @@ module.exports = RawListPrompt;
 
 "use strict";
 
-const _ = {
-  extend: __nccwpck_require__(25273),
-  omit: __nccwpck_require__(81656),
-};
 const MuteStream = __nccwpck_require__(73533);
 const readline = __nccwpck_require__(14521);
 
@@ -12109,8 +12065,7 @@ class UI {
   }
 }
 
-function setupReadlineOptions(opt) {
-  opt = opt || {};
+function setupReadlineOptions(opt = {}) {
   // Inquirer 8.x:
   // opt.skipTTYChecks = opt.skipTTYChecks === undefined ? opt.input !== undefined : opt.skipTTYChecks;
   opt.skipTTYChecks = opt.skipTTYChecks === undefined ? true : opt.skipTTYChecks;
@@ -12133,14 +12088,12 @@ function setupReadlineOptions(opt) {
   ms.pipe(opt.output || process.stdout);
   const output = ms;
 
-  return _.extend(
-    {
-      terminal: true,
-      input,
-      output,
-    },
-    _.omit(opt, ['input', 'output'])
-  );
+  return {
+    terminal: true,
+    ...opt,
+    input,
+    output,
+  };
 }
 
 module.exports = UI;
@@ -12160,14 +12113,9 @@ module.exports = UI;
 const through = __nccwpck_require__(10421);
 const Base = __nccwpck_require__(21449);
 const rlUtils = __nccwpck_require__(27551);
-const _ = {
-  last: __nccwpck_require__(81532),
-};
 
 class BottomBar extends Base {
-  constructor(opt) {
-    opt = opt || {};
-
+  constructor(opt = {}) {
     super(opt);
 
     this.log = through(this.writeLog.bind(this));
@@ -12233,7 +12181,6 @@ class BottomBar extends Base {
 
   /**
    * Helper for writing message in Prompt
-   * @param {BottomBar} prompt  - The Prompt object that extends tty
    * @param {String} message - The message to be output
    */
   write(message) {
@@ -12241,7 +12188,7 @@ class BottomBar extends Base {
     this.height = msgLines.length;
 
     // Write message to screen and setPrompt to control backspace
-    this.rl.setPrompt(_.last(msgLines));
+    this.rl.setPrompt(msgLines[msgLines.length - 1]);
 
     if (this.rl.output.rows === 0 && this.rl.output.columns === 0) {
       /* When it's a tty through serial port there's no terminal info and the render will malfunction,
@@ -12265,11 +12212,8 @@ module.exports = BottomBar;
 
 const _ = {
   isPlainObject: __nccwpck_require__(46169),
-  clone: __nccwpck_require__(57498),
-  isArray: __nccwpck_require__(44869),
   get: __nccwpck_require__(56908),
   set: __nccwpck_require__(82900),
-  isFunction: __nccwpck_require__(17799),
 };
 const { defer, empty, from, of } = __nccwpck_require__(1752);
 const { concatMap, filter, publish, reduce } = __nccwpck_require__(50749);
@@ -12290,7 +12234,7 @@ class PromptUI extends Base {
   run(questions, answers) {
     // Keep global reference to the answers
     if (_.isPlainObject(answers)) {
-      this.answers = _.clone(answers);
+      this.answers = { ...answers };
     } else {
       this.answers = {};
     }
@@ -12308,7 +12252,7 @@ class PromptUI extends Base {
     // Create an observable, unless we received one as parameter.
     // Note: As this is a public interface, we cannot do an instanceof check as we won't
     // be using the exact same object in memory.
-    const obs = _.isArray(questions) ? from(questions) : questions;
+    const obs = Array.isArray(questions) ? from(questions) : questions;
 
     this.process = obs.pipe(
       concatMap(this.processQuestion.bind(this)),
@@ -12344,7 +12288,7 @@ class PromptUI extends Base {
   }
 
   processQuestion(question) {
-    question = _.clone(question);
+    question = { ...question };
     return defer(() => {
       const obs = of(question);
 
@@ -12394,7 +12338,7 @@ class PromptUI extends Base {
       return empty();
     }
 
-    if (!_.isFunction(question.when)) {
+    if (typeof question.when !== 'function') {
       return of(question);
     }
 
@@ -12510,10 +12454,6 @@ module.exports = incrementListIndex;
 "use strict";
 
 
-const _ = {
-  sum: __nccwpck_require__(88863),
-  flatten: __nccwpck_require__(42394),
-};
 const chalk = __nccwpck_require__(14412);
 
 /**
@@ -12521,6 +12461,10 @@ const chalk = __nccwpck_require__(14412);
  */
 
 class Paginator {
+  /**
+   * @param {import("./screen-manager")} [screen]
+   * @param {{isInfinite?: boolean}} [options]
+   */
   constructor(screen, options = {}) {
     const { isInfinite = true } = options;
     this.lastIndex = 0;
@@ -12534,8 +12478,11 @@ class Paginator {
 
     if (this.screen) {
       lines = this.screen.breakLines(lines);
-      active = _.sum(lines.map((lineParts) => lineParts.length).splice(0, active));
-      lines = _.flatten(lines);
+      active = lines
+        .map((lineParts) => lineParts.length)
+        .splice(0, active)
+        .reduce((a, b) => a + b, 0);
+      lines = lines.flat();
     }
 
     // Make sure there's enough lines to paginate
@@ -12568,7 +12515,7 @@ class Paginator {
     }
 
     // Duplicate the lines so it give an infinite list look
-    const infinite = _.flatten([lines, lines, lines]);
+    const infinite = [lines, lines, lines].flat();
     const topIndex = Math.max(0, active + lines.length - this.pointer);
 
     return infinite.splice(topIndex, pageSize);
@@ -12654,10 +12601,6 @@ exports.clearLine = function (rl, len) {
 
 "use strict";
 
-const _ = {
-  last: __nccwpck_require__(81532),
-  flatten: __nccwpck_require__(42394),
-};
 const util = __nccwpck_require__(27551);
 const cliWidth = __nccwpck_require__(72455);
 const stripAnsi = __nccwpck_require__(45591);
@@ -12668,8 +12611,9 @@ function height(content) {
   return content.split('\n').length;
 }
 
+/** @param {string} content */
 function lastLine(content) {
-  return _.last(content.split('\n'));
+  return content.split('\n').pop();
 }
 
 class ScreenManager {
@@ -12808,11 +12752,13 @@ class ScreenManager {
     return width;
   }
 
-  breakLines(lines, width) {
+  /**
+   * @param {string[]} lines
+   */
+  breakLines(lines, width = this.normalizedCliWidth()) {
     // Break lines who're longer than the cli width so we can normalize the natural line
     // returns behavior across terminals.
-    width = width || this.normalizedCliWidth();
-    const regex = new RegExp('(?:(?:\\033[[0-9;]*m)*.?){1,' + width + '}', 'g');
+    const regex = new RegExp(`(?:(?:\\033[[0-9;]*m)*.?){1,${width}}`, 'g');
     return lines.map((line) => {
       const chunk = line.match(regex);
       // Last match is always empty
@@ -12821,9 +12767,11 @@ class ScreenManager {
     });
   }
 
-  forceLineReturn(content, width) {
-    width = width || this.normalizedCliWidth();
-    return _.flatten(this.breakLines(content.split('\n'), width)).join('\n');
+  /**
+   * @param {string} content
+   */
+  forceLineReturn(content, width = this.normalizedCliWidth()) {
+    return this.breakLines(content.split('\n'), width).flat().join('\n');
   }
 }
 
@@ -12837,9 +12785,6 @@ module.exports = ScreenManager;
 
 "use strict";
 
-const _ = {
-  isFunction: __nccwpck_require__(17799),
-};
 const { from, of } = __nccwpck_require__(1752);
 const runAsync = __nccwpck_require__(53700);
 
@@ -12853,7 +12798,7 @@ const runAsync = __nccwpck_require__(53700);
  */
 
 exports.fetchAsyncQuestionProperty = function (question, prop, answers) {
-  if (!_.isFunction(question[prop])) {
+  if (typeof question[prop] !== 'function') {
     return of(question);
   }
 
@@ -15837,63 +15782,10 @@ module.exports = arrayFilter;
 
 /***/ }),
 
-/***/ 17183:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var baseIndexOf = __nccwpck_require__(25425);
-
-/**
- * A specialized version of `_.includes` for arrays without support for
- * specifying an index to search from.
- *
- * @private
- * @param {Array} [array] The array to inspect.
- * @param {*} target The value to search for.
- * @returns {boolean} Returns `true` if `target` is found, else `false`.
- */
-function arrayIncludes(array, value) {
-  var length = array == null ? 0 : array.length;
-  return !!length && baseIndexOf(array, value, 0) > -1;
-}
-
-module.exports = arrayIncludes;
-
-
-/***/ }),
-
-/***/ 86732:
-/***/ ((module) => {
-
-/**
- * This function is like `arrayIncludes` except that it accepts a comparator.
- *
- * @private
- * @param {Array} [array] The array to inspect.
- * @param {*} target The value to search for.
- * @param {Function} comparator The comparator invoked per element.
- * @returns {boolean} Returns `true` if `target` is found, else `false`.
- */
-function arrayIncludesWith(array, value, comparator) {
-  var index = -1,
-      length = array == null ? 0 : array.length;
-
-  while (++index < length) {
-    if (comparator(value, array[index])) {
-      return true;
-    }
-  }
-  return false;
-}
-
-module.exports = arrayIncludesWith;
-
-
-/***/ }),
-
 /***/ 32237:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
-var baseTimes = __nccwpck_require__(37765),
+var baseTimes = __nccwpck_require__(31320),
     isArguments = __nccwpck_require__(78495),
     isArray = __nccwpck_require__(44869),
     isBuffer = __nccwpck_require__(74190),
@@ -16433,82 +16325,6 @@ module.exports = baseFilter;
 
 /***/ }),
 
-/***/ 87265:
-/***/ ((module) => {
-
-/**
- * The base implementation of `_.findIndex` and `_.findLastIndex` without
- * support for iteratee shorthands.
- *
- * @private
- * @param {Array} array The array to inspect.
- * @param {Function} predicate The function invoked per iteration.
- * @param {number} fromIndex The index to search from.
- * @param {boolean} [fromRight] Specify iterating from right to left.
- * @returns {number} Returns the index of the matched value, else `-1`.
- */
-function baseFindIndex(array, predicate, fromIndex, fromRight) {
-  var length = array.length,
-      index = fromIndex + (fromRight ? 1 : -1);
-
-  while ((fromRight ? index-- : ++index < length)) {
-    if (predicate(array[index], index, array)) {
-      return index;
-    }
-  }
-  return -1;
-}
-
-module.exports = baseFindIndex;
-
-
-/***/ }),
-
-/***/ 69588:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var arrayPush = __nccwpck_require__(60082),
-    isFlattenable = __nccwpck_require__(9299);
-
-/**
- * The base implementation of `_.flatten` with support for restricting flattening.
- *
- * @private
- * @param {Array} array The array to flatten.
- * @param {number} depth The maximum recursion depth.
- * @param {boolean} [predicate=isFlattenable] The function invoked per iteration.
- * @param {boolean} [isStrict] Restrict to values that pass `predicate` checks.
- * @param {Array} [result=[]] The initial result value.
- * @returns {Array} Returns the new flattened array.
- */
-function baseFlatten(array, depth, predicate, isStrict, result) {
-  var index = -1,
-      length = array.length;
-
-  predicate || (predicate = isFlattenable);
-  result || (result = []);
-
-  while (++index < length) {
-    var value = array[index];
-    if (depth > 0 && predicate(value)) {
-      if (depth > 1) {
-        // Recursively flatten arrays (susceptible to call stack limits).
-        baseFlatten(value, depth - 1, predicate, isStrict, result);
-      } else {
-        arrayPush(result, value);
-      }
-    } else if (!isStrict) {
-      result[result.length] = value;
-    }
-  }
-  return result;
-}
-
-module.exports = baseFlatten;
-
-
-/***/ }),
-
 /***/ 56588:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -16664,33 +16480,6 @@ function baseHasIn(object, key) {
 }
 
 module.exports = baseHasIn;
-
-
-/***/ }),
-
-/***/ 25425:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var baseFindIndex = __nccwpck_require__(87265),
-    baseIsNaN = __nccwpck_require__(18048),
-    strictIndexOf = __nccwpck_require__(58868);
-
-/**
- * The base implementation of `_.indexOf` without `fromIndex` bounds checks.
- *
- * @private
- * @param {Array} array The array to inspect.
- * @param {*} value The value to search for.
- * @param {number} fromIndex The index to search from.
- * @returns {number} Returns the index of the matched value, else `-1`.
- */
-function baseIndexOf(array, value, fromIndex) {
-  return value === value
-    ? strictIndexOf(array, value, fromIndex)
-    : baseFindIndex(array, baseIsNaN, fromIndex);
-}
-
-module.exports = baseIndexOf;
 
 
 /***/ }),
@@ -16935,25 +16724,6 @@ function baseIsMatch(object, source, matchData, customizer) {
 }
 
 module.exports = baseIsMatch;
-
-
-/***/ }),
-
-/***/ 18048:
-/***/ ((module) => {
-
-/**
- * The base implementation of `_.isNaN` without support for number objects.
- *
- * @private
- * @param {*} value The value to check.
- * @returns {boolean} Returns `true` if `value` is `NaN`, else `false`.
- */
-function baseIsNaN(value) {
-  return value !== value;
-}
-
-module.exports = baseIsNaN;
 
 
 /***/ }),
@@ -17472,76 +17242,7 @@ module.exports = baseSetToString;
 
 /***/ }),
 
-/***/ 8758:
-/***/ ((module) => {
-
-/**
- * The base implementation of `_.slice` without an iteratee call guard.
- *
- * @private
- * @param {Array} array The array to slice.
- * @param {number} [start=0] The start position.
- * @param {number} [end=array.length] The end position.
- * @returns {Array} Returns the slice of `array`.
- */
-function baseSlice(array, start, end) {
-  var index = -1,
-      length = array.length;
-
-  if (start < 0) {
-    start = -start > length ? 0 : (length + start);
-  }
-  end = end > length ? length : end;
-  if (end < 0) {
-    end += length;
-  }
-  length = start > end ? 0 : ((end - start) >>> 0);
-  start >>>= 0;
-
-  var result = Array(length);
-  while (++index < length) {
-    result[index] = array[index + start];
-  }
-  return result;
-}
-
-module.exports = baseSlice;
-
-
-/***/ }),
-
-/***/ 33193:
-/***/ ((module) => {
-
-/**
- * The base implementation of `_.sum` and `_.sumBy` without support for
- * iteratee shorthands.
- *
- * @private
- * @param {Array} array The array to iterate over.
- * @param {Function} iteratee The function invoked per iteration.
- * @returns {number} Returns the sum.
- */
-function baseSum(array, iteratee) {
-  var result,
-      index = -1,
-      length = array.length;
-
-  while (++index < length) {
-    var current = iteratee(array[index]);
-    if (current !== undefined) {
-      result = result === undefined ? current : (result + current);
-    }
-  }
-  return result;
-}
-
-module.exports = baseSum;
-
-
-/***/ }),
-
-/***/ 37765:
+/***/ 31320:
 /***/ ((module) => {
 
 /**
@@ -17612,32 +17313,6 @@ module.exports = baseToString;
 
 /***/ }),
 
-/***/ 69528:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var trimmedEndIndex = __nccwpck_require__(57010);
-
-/** Used to match leading whitespace. */
-var reTrimStart = /^\s+/;
-
-/**
- * The base implementation of `_.trim`.
- *
- * @private
- * @param {string} string The string to trim.
- * @returns {string} Returns the trimmed string.
- */
-function baseTrim(string) {
-  return string
-    ? string.slice(0, trimmedEndIndex(string) + 1).replace(reTrimStart, '')
-    : string;
-}
-
-module.exports = baseTrim;
-
-
-/***/ }),
-
 /***/ 59258:
 /***/ ((module) => {
 
@@ -17655,112 +17330,6 @@ function baseUnary(func) {
 }
 
 module.exports = baseUnary;
-
-
-/***/ }),
-
-/***/ 19036:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var SetCache = __nccwpck_require__(72158),
-    arrayIncludes = __nccwpck_require__(17183),
-    arrayIncludesWith = __nccwpck_require__(86732),
-    cacheHas = __nccwpck_require__(72675),
-    createSet = __nccwpck_require__(46505),
-    setToArray = __nccwpck_require__(49553);
-
-/** Used as the size to enable large array optimizations. */
-var LARGE_ARRAY_SIZE = 200;
-
-/**
- * The base implementation of `_.uniqBy` without support for iteratee shorthands.
- *
- * @private
- * @param {Array} array The array to inspect.
- * @param {Function} [iteratee] The iteratee invoked per element.
- * @param {Function} [comparator] The comparator invoked per element.
- * @returns {Array} Returns the new duplicate free array.
- */
-function baseUniq(array, iteratee, comparator) {
-  var index = -1,
-      includes = arrayIncludes,
-      length = array.length,
-      isCommon = true,
-      result = [],
-      seen = result;
-
-  if (comparator) {
-    isCommon = false;
-    includes = arrayIncludesWith;
-  }
-  else if (length >= LARGE_ARRAY_SIZE) {
-    var set = iteratee ? null : createSet(array);
-    if (set) {
-      return setToArray(set);
-    }
-    isCommon = false;
-    includes = cacheHas;
-    seen = new SetCache;
-  }
-  else {
-    seen = iteratee ? [] : result;
-  }
-  outer:
-  while (++index < length) {
-    var value = array[index],
-        computed = iteratee ? iteratee(value) : value;
-
-    value = (comparator || value !== 0) ? value : 0;
-    if (isCommon && computed === computed) {
-      var seenIndex = seen.length;
-      while (seenIndex--) {
-        if (seen[seenIndex] === computed) {
-          continue outer;
-        }
-      }
-      if (iteratee) {
-        seen.push(computed);
-      }
-      result.push(value);
-    }
-    else if (!includes(seen, computed, comparator)) {
-      if (seen !== result) {
-        seen.push(computed);
-      }
-      result.push(value);
-    }
-  }
-  return result;
-}
-
-module.exports = baseUniq;
-
-
-/***/ }),
-
-/***/ 74724:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var castPath = __nccwpck_require__(2688),
-    last = __nccwpck_require__(81532),
-    parent = __nccwpck_require__(57924),
-    toKey = __nccwpck_require__(69071);
-
-/**
- * The base implementation of `_.unset`.
- *
- * @private
- * @param {Object} object The object to modify.
- * @param {Array|string} path The property path to unset.
- * @returns {boolean} Returns `true` if the property is deleted, else `false`.
- */
-function baseUnset(object, path) {
-  path = castPath(path, object);
-  object = parent(object, path);
-  return object == null || delete object[toKey(last(path))];
-}
-
-module.exports = baseUnset;
 
 
 /***/ }),
@@ -18107,50 +17676,6 @@ module.exports = coreJsData;
 
 /***/ }),
 
-/***/ 31911:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var baseRest = __nccwpck_require__(42936),
-    isIterateeCall = __nccwpck_require__(8494);
-
-/**
- * Creates a function like `_.assign`.
- *
- * @private
- * @param {Function} assigner The function to assign values.
- * @returns {Function} Returns the new assigner function.
- */
-function createAssigner(assigner) {
-  return baseRest(function(object, sources) {
-    var index = -1,
-        length = sources.length,
-        customizer = length > 1 ? sources[length - 1] : undefined,
-        guard = length > 2 ? sources[2] : undefined;
-
-    customizer = (assigner.length > 3 && typeof customizer == 'function')
-      ? (length--, customizer)
-      : undefined;
-
-    if (guard && isIterateeCall(sources[0], sources[1], guard)) {
-      customizer = length < 3 ? undefined : customizer;
-      length = 1;
-    }
-    object = Object(object);
-    while (++index < length) {
-      var source = sources[index];
-      if (source) {
-        assigner(object, source, index, customizer);
-      }
-    }
-    return object;
-  });
-}
-
-module.exports = createAssigner;
-
-
-/***/ }),
-
 /***/ 49327:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -18218,87 +17743,6 @@ function createBaseFor(fromRight) {
 }
 
 module.exports = createBaseFor;
-
-
-/***/ }),
-
-/***/ 83680:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var baseIteratee = __nccwpck_require__(60427),
-    isArrayLike = __nccwpck_require__(18017),
-    keys = __nccwpck_require__(87645);
-
-/**
- * Creates a `_.find` or `_.findLast` function.
- *
- * @private
- * @param {Function} findIndexFunc The function to find the collection index.
- * @returns {Function} Returns the new find function.
- */
-function createFind(findIndexFunc) {
-  return function(collection, predicate, fromIndex) {
-    var iterable = Object(collection);
-    if (!isArrayLike(collection)) {
-      var iteratee = baseIteratee(predicate, 3);
-      collection = keys(collection);
-      predicate = function(key) { return iteratee(iterable[key], key, iterable); };
-    }
-    var index = findIndexFunc(collection, predicate, fromIndex);
-    return index > -1 ? iterable[iteratee ? collection[index] : index] : undefined;
-  };
-}
-
-module.exports = createFind;
-
-
-/***/ }),
-
-/***/ 46505:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var Set = __nccwpck_require__(35793),
-    noop = __nccwpck_require__(51901),
-    setToArray = __nccwpck_require__(49553);
-
-/** Used as references for various `Number` constants. */
-var INFINITY = 1 / 0;
-
-/**
- * Creates a set object of `values`.
- *
- * @private
- * @param {Array} values The values to add to the set.
- * @returns {Object} Returns the new set.
- */
-var createSet = !(Set && (1 / setToArray(new Set([,-0]))[1]) == INFINITY) ? noop : function(values) {
-  return new Set(values);
-};
-
-module.exports = createSet;
-
-
-/***/ }),
-
-/***/ 8957:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var isPlainObject = __nccwpck_require__(46169);
-
-/**
- * Used by `_.omit` to customize its `_.cloneDeep` use to only clone plain
- * objects.
- *
- * @private
- * @param {*} value The value to inspect.
- * @param {string} key The key of the property to inspect.
- * @returns {*} Returns the uncloned value or `undefined` to defer cloning to `_.cloneDeep`.
- */
-function customOmitClone(value) {
-  return isPlainObject(value) ? undefined : value;
-}
-
-module.exports = customOmitClone;
 
 
 /***/ }),
@@ -18624,29 +18068,6 @@ function equalObjects(object, other, bitmask, customizer, equalFunc, stack) {
 }
 
 module.exports = equalObjects;
-
-
-/***/ }),
-
-/***/ 18751:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var flatten = __nccwpck_require__(42394),
-    overRest = __nccwpck_require__(12417),
-    setToString = __nccwpck_require__(98416);
-
-/**
- * A specialized version of `baseRest` which flattens the rest array.
- *
- * @private
- * @param {Function} func The function to apply a rest parameter to.
- * @returns {Function} Returns the new function.
- */
-function flatRest(func) {
-  return setToString(overRest(func, undefined, flatten), func + '');
-}
-
-module.exports = flatRest;
 
 
 /***/ }),
@@ -19336,33 +18757,6 @@ function initCloneObject(object) {
 }
 
 module.exports = initCloneObject;
-
-
-/***/ }),
-
-/***/ 9299:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var Symbol = __nccwpck_require__(19213),
-    isArguments = __nccwpck_require__(78495),
-    isArray = __nccwpck_require__(44869);
-
-/** Built-in value references. */
-var spreadableSymbol = Symbol ? Symbol.isConcatSpreadable : undefined;
-
-/**
- * Checks if `value` is a flattenable `arguments` object or array.
- *
- * @private
- * @param {*} value The value to check.
- * @returns {boolean} Returns `true` if `value` is flattenable, else `false`.
- */
-function isFlattenable(value) {
-  return isArray(value) || isArguments(value) ||
-    !!(spreadableSymbol && value && value[spreadableSymbol]);
-}
-
-module.exports = isFlattenable;
 
 
 /***/ }),
@@ -20110,29 +19504,6 @@ module.exports = overRest;
 
 /***/ }),
 
-/***/ 57924:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var baseGet = __nccwpck_require__(75758),
-    baseSlice = __nccwpck_require__(8758);
-
-/**
- * Gets the parent value at `path` of `object`.
- *
- * @private
- * @param {Object} object The object to query.
- * @param {Array} path The path to get the parent value of.
- * @returns {*} Returns the parent value.
- */
-function parent(object, path) {
-  return path.length < 2 ? object : baseGet(object, baseSlice(path, 0, -1));
-}
-
-module.exports = parent;
-
-
-/***/ }),
-
 /***/ 89882:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -20416,36 +19787,6 @@ module.exports = stackSet;
 
 /***/ }),
 
-/***/ 58868:
-/***/ ((module) => {
-
-/**
- * A specialized version of `_.indexOf` which performs strict equality
- * comparisons of values, i.e. `===`.
- *
- * @private
- * @param {Array} array The array to inspect.
- * @param {*} value The value to search for.
- * @param {number} fromIndex The index to search from.
- * @returns {number} Returns the index of the matched value, else `-1`.
- */
-function strictIndexOf(array, value, fromIndex) {
-  var index = fromIndex - 1,
-      length = array.length;
-
-  while (++index < length) {
-    if (array[index] === value) {
-      return index;
-    }
-  }
-  return -1;
-}
-
-module.exports = strictIndexOf;
-
-
-/***/ }),
-
 /***/ 61853:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -20537,144 +19878,6 @@ function toSource(func) {
 }
 
 module.exports = toSource;
-
-
-/***/ }),
-
-/***/ 57010:
-/***/ ((module) => {
-
-/** Used to match a single whitespace character. */
-var reWhitespace = /\s/;
-
-/**
- * Used by `_.trim` and `_.trimEnd` to get the index of the last non-whitespace
- * character of `string`.
- *
- * @private
- * @param {string} string The string to inspect.
- * @returns {number} Returns the index of the last non-whitespace character.
- */
-function trimmedEndIndex(string) {
-  var index = string.length;
-
-  while (index-- && reWhitespace.test(string.charAt(index))) {}
-  return index;
-}
-
-module.exports = trimmedEndIndex;
-
-
-/***/ }),
-
-/***/ 34874:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var assignValue = __nccwpck_require__(39725),
-    copyObject = __nccwpck_require__(86388),
-    createAssigner = __nccwpck_require__(31911),
-    isArrayLike = __nccwpck_require__(18017),
-    isPrototype = __nccwpck_require__(60010),
-    keys = __nccwpck_require__(87645);
-
-/** Used for built-in method references. */
-var objectProto = Object.prototype;
-
-/** Used to check objects for own properties. */
-var hasOwnProperty = objectProto.hasOwnProperty;
-
-/**
- * Assigns own enumerable string keyed properties of source objects to the
- * destination object. Source objects are applied from left to right.
- * Subsequent sources overwrite property assignments of previous sources.
- *
- * **Note:** This method mutates `object` and is loosely based on
- * [`Object.assign`](https://mdn.io/Object/assign).
- *
- * @static
- * @memberOf _
- * @since 0.10.0
- * @category Object
- * @param {Object} object The destination object.
- * @param {...Object} [sources] The source objects.
- * @returns {Object} Returns `object`.
- * @see _.assignIn
- * @example
- *
- * function Foo() {
- *   this.a = 1;
- * }
- *
- * function Bar() {
- *   this.c = 3;
- * }
- *
- * Foo.prototype.b = 2;
- * Bar.prototype.d = 4;
- *
- * _.assign({ 'a': 0 }, new Foo, new Bar);
- * // => { 'a': 1, 'c': 3 }
- */
-var assign = createAssigner(function(object, source) {
-  if (isPrototype(source) || isArrayLike(source)) {
-    copyObject(source, keys(source), object);
-    return;
-  }
-  for (var key in source) {
-    if (hasOwnProperty.call(source, key)) {
-      assignValue(object, key, source[key]);
-    }
-  }
-});
-
-module.exports = assign;
-
-
-/***/ }),
-
-/***/ 5716:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var copyObject = __nccwpck_require__(86388),
-    createAssigner = __nccwpck_require__(31911),
-    keysIn = __nccwpck_require__(69109);
-
-/**
- * This method is like `_.assign` except that it iterates over own and
- * inherited source properties.
- *
- * **Note:** This method mutates `object`.
- *
- * @static
- * @memberOf _
- * @since 4.0.0
- * @alias extend
- * @category Object
- * @param {Object} object The destination object.
- * @param {...Object} [sources] The source objects.
- * @returns {Object} Returns `object`.
- * @see _.assign
- * @example
- *
- * function Foo() {
- *   this.a = 1;
- * }
- *
- * function Bar() {
- *   this.c = 3;
- * }
- *
- * Foo.prototype.b = 2;
- * Bar.prototype.d = 4;
- *
- * _.assignIn({ 'a': 0 }, new Foo, new Bar);
- * // => { 'a': 1, 'b': 2, 'c': 3, 'd': 4 }
- */
-var assignIn = createAssigner(function(object, source) {
-  copyObject(source, keysIn(source), object);
-});
-
-module.exports = assignIn;
 
 
 /***/ }),
@@ -20870,14 +20073,6 @@ module.exports = eq;
 
 /***/ }),
 
-/***/ 25273:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-module.exports = __nccwpck_require__(5716);
-
-
-/***/ }),
-
 /***/ 33779:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -20933,146 +20128,6 @@ function filter(collection, predicate) {
 }
 
 module.exports = filter;
-
-
-/***/ }),
-
-/***/ 93986:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var createFind = __nccwpck_require__(83680),
-    findIndex = __nccwpck_require__(98253);
-
-/**
- * Iterates over elements of `collection`, returning the first element
- * `predicate` returns truthy for. The predicate is invoked with three
- * arguments: (value, index|key, collection).
- *
- * @static
- * @memberOf _
- * @since 0.1.0
- * @category Collection
- * @param {Array|Object} collection The collection to inspect.
- * @param {Function} [predicate=_.identity] The function invoked per iteration.
- * @param {number} [fromIndex=0] The index to search from.
- * @returns {*} Returns the matched element, else `undefined`.
- * @example
- *
- * var users = [
- *   { 'user': 'barney',  'age': 36, 'active': true },
- *   { 'user': 'fred',    'age': 40, 'active': false },
- *   { 'user': 'pebbles', 'age': 1,  'active': true }
- * ];
- *
- * _.find(users, function(o) { return o.age < 40; });
- * // => object for 'barney'
- *
- * // The `_.matches` iteratee shorthand.
- * _.find(users, { 'age': 1, 'active': true });
- * // => object for 'pebbles'
- *
- * // The `_.matchesProperty` iteratee shorthand.
- * _.find(users, ['active', false]);
- * // => object for 'fred'
- *
- * // The `_.property` iteratee shorthand.
- * _.find(users, 'active');
- * // => object for 'barney'
- */
-var find = createFind(findIndex);
-
-module.exports = find;
-
-
-/***/ }),
-
-/***/ 98253:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var baseFindIndex = __nccwpck_require__(87265),
-    baseIteratee = __nccwpck_require__(60427),
-    toInteger = __nccwpck_require__(22722);
-
-/* Built-in method references for those with the same name as other `lodash` methods. */
-var nativeMax = Math.max;
-
-/**
- * This method is like `_.find` except that it returns the index of the first
- * element `predicate` returns truthy for instead of the element itself.
- *
- * @static
- * @memberOf _
- * @since 1.1.0
- * @category Array
- * @param {Array} array The array to inspect.
- * @param {Function} [predicate=_.identity] The function invoked per iteration.
- * @param {number} [fromIndex=0] The index to search from.
- * @returns {number} Returns the index of the found element, else `-1`.
- * @example
- *
- * var users = [
- *   { 'user': 'barney',  'active': false },
- *   { 'user': 'fred',    'active': false },
- *   { 'user': 'pebbles', 'active': true }
- * ];
- *
- * _.findIndex(users, function(o) { return o.user == 'barney'; });
- * // => 0
- *
- * // The `_.matches` iteratee shorthand.
- * _.findIndex(users, { 'user': 'fred', 'active': false });
- * // => 1
- *
- * // The `_.matchesProperty` iteratee shorthand.
- * _.findIndex(users, ['active', false]);
- * // => 0
- *
- * // The `_.property` iteratee shorthand.
- * _.findIndex(users, 'active');
- * // => 2
- */
-function findIndex(array, predicate, fromIndex) {
-  var length = array == null ? 0 : array.length;
-  if (!length) {
-    return -1;
-  }
-  var index = fromIndex == null ? 0 : toInteger(fromIndex);
-  if (index < 0) {
-    index = nativeMax(length + index, 0);
-  }
-  return baseFindIndex(array, baseIteratee(predicate, 3), index);
-}
-
-module.exports = findIndex;
-
-
-/***/ }),
-
-/***/ 42394:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var baseFlatten = __nccwpck_require__(69588);
-
-/**
- * Flattens `array` a single level deep.
- *
- * @static
- * @memberOf _
- * @since 0.1.0
- * @category Array
- * @param {Array} array The array to flatten.
- * @returns {Array} Returns the new flattened array.
- * @example
- *
- * _.flatten([1, [2, [3, [4]], 5]]);
- * // => [1, 2, [3, [4]], 5]
- */
-function flatten(array) {
-  var length = array == null ? 0 : array.length;
-  return length ? baseFlatten(array, 1) : [];
-}
-
-module.exports = flatten;
 
 
 /***/ }),
@@ -21302,42 +20357,6 @@ module.exports = isArrayLike;
 
 /***/ }),
 
-/***/ 61009:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var baseGetTag = __nccwpck_require__(97497),
-    isObjectLike = __nccwpck_require__(85926);
-
-/** `Object#toString` result references. */
-var boolTag = '[object Boolean]';
-
-/**
- * Checks if `value` is classified as a boolean primitive or object.
- *
- * @static
- * @memberOf _
- * @since 0.1.0
- * @category Lang
- * @param {*} value The value to check.
- * @returns {boolean} Returns `true` if `value` is a boolean, else `false`.
- * @example
- *
- * _.isBoolean(false);
- * // => true
- *
- * _.isBoolean(null);
- * // => false
- */
-function isBoolean(value) {
-  return value === true || value === false ||
-    (isObjectLike(value) && baseGetTag(value) == boolTag);
-}
-
-module.exports = isBoolean;
-
-
-/***/ }),
-
 /***/ 74190:
 /***/ ((module, exports, __nccwpck_require__) => {
 
@@ -21500,51 +20519,6 @@ var nodeIsMap = nodeUtil && nodeUtil.isMap;
 var isMap = nodeIsMap ? baseUnary(nodeIsMap) : baseIsMap;
 
 module.exports = isMap;
-
-
-/***/ }),
-
-/***/ 10966:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var baseGetTag = __nccwpck_require__(97497),
-    isObjectLike = __nccwpck_require__(85926);
-
-/** `Object#toString` result references. */
-var numberTag = '[object Number]';
-
-/**
- * Checks if `value` is classified as a `Number` primitive or object.
- *
- * **Note:** To exclude `Infinity`, `-Infinity`, and `NaN`, which are
- * classified as numbers, use the `_.isFinite` method.
- *
- * @static
- * @memberOf _
- * @since 0.1.0
- * @category Lang
- * @param {*} value The value to check.
- * @returns {boolean} Returns `true` if `value` is a number, else `false`.
- * @example
- *
- * _.isNumber(3);
- * // => true
- *
- * _.isNumber(Number.MIN_VALUE);
- * // => true
- *
- * _.isNumber(Infinity);
- * // => true
- *
- * _.isNumber('3');
- * // => false
- */
-function isNumber(value) {
-  return typeof value == 'number' ||
-    (isObjectLike(value) && baseGetTag(value) == numberTag);
-}
-
-module.exports = isNumber;
 
 
 /***/ }),
@@ -21726,43 +20700,6 @@ module.exports = isSet;
 
 /***/ }),
 
-/***/ 65704:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var baseGetTag = __nccwpck_require__(97497),
-    isArray = __nccwpck_require__(44869),
-    isObjectLike = __nccwpck_require__(85926);
-
-/** `Object#toString` result references. */
-var stringTag = '[object String]';
-
-/**
- * Checks if `value` is classified as a `String` primitive or object.
- *
- * @static
- * @since 0.1.0
- * @memberOf _
- * @category Lang
- * @param {*} value The value to check.
- * @returns {boolean} Returns `true` if `value` is a string, else `false`.
- * @example
- *
- * _.isString('abc');
- * // => true
- *
- * _.isString(1);
- * // => false
- */
-function isString(value) {
-  return typeof value == 'string' ||
-    (!isArray(value) && isObjectLike(value) && baseGetTag(value) == stringTag);
-}
-
-module.exports = isString;
-
-
-/***/ }),
-
 /***/ 66403:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -21916,33 +20853,6 @@ module.exports = keysIn;
 
 /***/ }),
 
-/***/ 81532:
-/***/ ((module) => {
-
-/**
- * Gets the last element of `array`.
- *
- * @static
- * @memberOf _
- * @since 0.1.0
- * @category Array
- * @param {Array} array The array to query.
- * @returns {*} Returns the last element of `array`.
- * @example
- *
- * _.last([1, 2, 3]);
- * // => 3
- */
-function last(array) {
-  var length = array == null ? 0 : array.length;
-  return length ? array[length - 1] : undefined;
-}
-
-module.exports = last;
-
-
-/***/ }),
-
 /***/ 78101:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -22083,94 +20993,6 @@ module.exports = memoize;
 
 /***/ }),
 
-/***/ 51901:
-/***/ ((module) => {
-
-/**
- * This method returns `undefined`.
- *
- * @static
- * @memberOf _
- * @since 2.3.0
- * @category Util
- * @example
- *
- * _.times(2, _.noop);
- * // => [undefined, undefined]
- */
-function noop() {
-  // No operation performed.
-}
-
-module.exports = noop;
-
-
-/***/ }),
-
-/***/ 81656:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var arrayMap = __nccwpck_require__(94356),
-    baseClone = __nccwpck_require__(23040),
-    baseUnset = __nccwpck_require__(74724),
-    castPath = __nccwpck_require__(2688),
-    copyObject = __nccwpck_require__(86388),
-    customOmitClone = __nccwpck_require__(8957),
-    flatRest = __nccwpck_require__(18751),
-    getAllKeysIn = __nccwpck_require__(4291);
-
-/** Used to compose bitmasks for cloning. */
-var CLONE_DEEP_FLAG = 1,
-    CLONE_FLAT_FLAG = 2,
-    CLONE_SYMBOLS_FLAG = 4;
-
-/**
- * The opposite of `_.pick`; this method creates an object composed of the
- * own and inherited enumerable property paths of `object` that are not omitted.
- *
- * **Note:** This method is considerably slower than `_.pick`.
- *
- * @static
- * @since 0.1.0
- * @memberOf _
- * @category Object
- * @param {Object} object The source object.
- * @param {...(string|string[])} [paths] The property paths to omit.
- * @returns {Object} Returns the new object.
- * @example
- *
- * var object = { 'a': 1, 'b': '2', 'c': 3 };
- *
- * _.omit(object, ['a', 'c']);
- * // => { 'b': '2' }
- */
-var omit = flatRest(function(object, paths) {
-  var result = {};
-  if (object == null) {
-    return result;
-  }
-  var isDeep = false;
-  paths = arrayMap(paths, function(path) {
-    path = castPath(path, object);
-    isDeep || (isDeep = path.length > 1);
-    return path;
-  });
-  copyObject(object, getAllKeysIn(object), result);
-  if (isDeep) {
-    result = baseClone(result, CLONE_DEEP_FLAG | CLONE_FLAT_FLAG | CLONE_SYMBOLS_FLAG, customOmitClone);
-  }
-  var length = paths.length;
-  while (length--) {
-    baseUnset(result, paths[length]);
-  }
-  return result;
-});
-
-module.exports = omit;
-
-
-/***/ }),
-
 /***/ 17261:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -22307,200 +21129,6 @@ module.exports = stubFalse;
 
 /***/ }),
 
-/***/ 88863:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var baseSum = __nccwpck_require__(33193),
-    identity = __nccwpck_require__(57822);
-
-/**
- * Computes the sum of the values in `array`.
- *
- * @static
- * @memberOf _
- * @since 3.4.0
- * @category Math
- * @param {Array} array The array to iterate over.
- * @returns {number} Returns the sum.
- * @example
- *
- * _.sum([4, 2, 8, 6]);
- * // => 20
- */
-function sum(array) {
-  return (array && array.length)
-    ? baseSum(array, identity)
-    : 0;
-}
-
-module.exports = sum;
-
-
-/***/ }),
-
-/***/ 19323:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var toNumber = __nccwpck_require__(91235);
-
-/** Used as references for various `Number` constants. */
-var INFINITY = 1 / 0,
-    MAX_INTEGER = 1.7976931348623157e+308;
-
-/**
- * Converts `value` to a finite number.
- *
- * @static
- * @memberOf _
- * @since 4.12.0
- * @category Lang
- * @param {*} value The value to convert.
- * @returns {number} Returns the converted number.
- * @example
- *
- * _.toFinite(3.2);
- * // => 3.2
- *
- * _.toFinite(Number.MIN_VALUE);
- * // => 5e-324
- *
- * _.toFinite(Infinity);
- * // => 1.7976931348623157e+308
- *
- * _.toFinite('3.2');
- * // => 3.2
- */
-function toFinite(value) {
-  if (!value) {
-    return value === 0 ? value : 0;
-  }
-  value = toNumber(value);
-  if (value === INFINITY || value === -INFINITY) {
-    var sign = (value < 0 ? -1 : 1);
-    return sign * MAX_INTEGER;
-  }
-  return value === value ? value : 0;
-}
-
-module.exports = toFinite;
-
-
-/***/ }),
-
-/***/ 22722:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var toFinite = __nccwpck_require__(19323);
-
-/**
- * Converts `value` to an integer.
- *
- * **Note:** This method is loosely based on
- * [`ToInteger`](http://www.ecma-international.org/ecma-262/7.0/#sec-tointeger).
- *
- * @static
- * @memberOf _
- * @since 4.0.0
- * @category Lang
- * @param {*} value The value to convert.
- * @returns {number} Returns the converted integer.
- * @example
- *
- * _.toInteger(3.2);
- * // => 3
- *
- * _.toInteger(Number.MIN_VALUE);
- * // => 0
- *
- * _.toInteger(Infinity);
- * // => 1.7976931348623157e+308
- *
- * _.toInteger('3.2');
- * // => 3
- */
-function toInteger(value) {
-  var result = toFinite(value),
-      remainder = result % 1;
-
-  return result === result ? (remainder ? result - remainder : result) : 0;
-}
-
-module.exports = toInteger;
-
-
-/***/ }),
-
-/***/ 91235:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var baseTrim = __nccwpck_require__(69528),
-    isObject = __nccwpck_require__(33334),
-    isSymbol = __nccwpck_require__(66403);
-
-/** Used as references for various `Number` constants. */
-var NAN = 0 / 0;
-
-/** Used to detect bad signed hexadecimal string values. */
-var reIsBadHex = /^[-+]0x[0-9a-f]+$/i;
-
-/** Used to detect binary string values. */
-var reIsBinary = /^0b[01]+$/i;
-
-/** Used to detect octal string values. */
-var reIsOctal = /^0o[0-7]+$/i;
-
-/** Built-in method references without a dependency on `root`. */
-var freeParseInt = parseInt;
-
-/**
- * Converts `value` to a number.
- *
- * @static
- * @memberOf _
- * @since 4.0.0
- * @category Lang
- * @param {*} value The value to process.
- * @returns {number} Returns the number.
- * @example
- *
- * _.toNumber(3.2);
- * // => 3.2
- *
- * _.toNumber(Number.MIN_VALUE);
- * // => 5e-324
- *
- * _.toNumber(Infinity);
- * // => Infinity
- *
- * _.toNumber('3.2');
- * // => 3.2
- */
-function toNumber(value) {
-  if (typeof value == 'number') {
-    return value;
-  }
-  if (isSymbol(value)) {
-    return NAN;
-  }
-  if (isObject(value)) {
-    var other = typeof value.valueOf == 'function' ? value.valueOf() : value;
-    value = isObject(other) ? (other + '') : other;
-  }
-  if (typeof value != 'string') {
-    return value === 0 ? value : +value;
-  }
-  value = baseTrim(value);
-  var isBinary = reIsBinary.test(value);
-  return (isBinary || reIsOctal.test(value))
-    ? freeParseInt(value.slice(2), isBinary ? 2 : 8)
-    : (reIsBadHex.test(value) ? NAN : +value);
-}
-
-module.exports = toNumber;
-
-
-/***/ }),
-
 /***/ 32931:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -22532,38 +21160,6 @@ function toString(value) {
 }
 
 module.exports = toString;
-
-
-/***/ }),
-
-/***/ 89482:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var baseUniq = __nccwpck_require__(19036);
-
-/**
- * Creates a duplicate-free version of an array, using
- * [`SameValueZero`](http://ecma-international.org/ecma-262/7.0/#sec-samevaluezero)
- * for equality comparisons, in which only the first occurrence of each element
- * is kept. The order of result values is determined by the order they occur
- * in the array.
- *
- * @static
- * @memberOf _
- * @since 0.1.0
- * @category Array
- * @param {Array} array The array to inspect.
- * @returns {Array} Returns the new duplicate free array.
- * @example
- *
- * _.uniq([2, 1, 2]);
- * // => [2, 1]
- */
-function uniq(array) {
-  return (array && array.length) ? baseUniq(array) : [];
-}
-
-module.exports = uniq;
 
 
 /***/ }),
@@ -35773,7 +34369,7 @@ var bufferToggle_1 = __nccwpck_require__(83781);
 Object.defineProperty(exports, "bufferToggle", ({ enumerable: true, get: function () { return bufferToggle_1.bufferToggle; } }));
 var bufferWhen_1 = __nccwpck_require__(82855);
 Object.defineProperty(exports, "bufferWhen", ({ enumerable: true, get: function () { return bufferWhen_1.bufferWhen; } }));
-var catchError_1 = __nccwpck_require__(8869);
+var catchError_1 = __nccwpck_require__(37765);
 Object.defineProperty(exports, "catchError", ({ enumerable: true, get: function () { return catchError_1.catchError; } }));
 var combineAll_1 = __nccwpck_require__(88817);
 Object.defineProperty(exports, "combineAll", ({ enumerable: true, get: function () { return combineAll_1.combineAll; } }));
@@ -36472,6 +35068,7 @@ var Subject = (function (_super) {
     function Subject() {
         var _this = _super.call(this) || this;
         _this.closed = false;
+        _this.currentObservers = null;
         _this.observers = [];
         _this.isStopped = false;
         _this.hasError = false;
@@ -36494,17 +35091,19 @@ var Subject = (function (_super) {
             var e_1, _a;
             _this._throwIfClosed();
             if (!_this.isStopped) {
-                var copy = _this.observers.slice();
+                if (!_this.currentObservers) {
+                    _this.currentObservers = Array.from(_this.observers);
+                }
                 try {
-                    for (var copy_1 = __values(copy), copy_1_1 = copy_1.next(); !copy_1_1.done; copy_1_1 = copy_1.next()) {
-                        var observer = copy_1_1.value;
+                    for (var _b = __values(_this.currentObservers), _c = _b.next(); !_c.done; _c = _b.next()) {
+                        var observer = _c.value;
                         observer.next(value);
                     }
                 }
                 catch (e_1_1) { e_1 = { error: e_1_1 }; }
                 finally {
                     try {
-                        if (copy_1_1 && !copy_1_1.done && (_a = copy_1.return)) _a.call(copy_1);
+                        if (_c && !_c.done && (_a = _b.return)) _a.call(_b);
                     }
                     finally { if (e_1) throw e_1.error; }
                 }
@@ -36540,7 +35139,7 @@ var Subject = (function (_super) {
     };
     Subject.prototype.unsubscribe = function () {
         this.isStopped = this.closed = true;
-        this.observers = null;
+        this.observers = this.currentObservers = null;
     };
     Object.defineProperty(Subject.prototype, "observed", {
         get: function () {
@@ -36560,10 +35159,17 @@ var Subject = (function (_super) {
         return this._innerSubscribe(subscriber);
     };
     Subject.prototype._innerSubscribe = function (subscriber) {
+        var _this = this;
         var _a = this, hasError = _a.hasError, isStopped = _a.isStopped, observers = _a.observers;
-        return hasError || isStopped
-            ? Subscription_1.EMPTY_SUBSCRIPTION
-            : (observers.push(subscriber), new Subscription_1.Subscription(function () { return arrRemove_1.arrRemove(observers, subscriber); }));
+        if (hasError || isStopped) {
+            return Subscription_1.EMPTY_SUBSCRIPTION;
+        }
+        this.currentObservers = null;
+        observers.push(subscriber);
+        return new Subscription_1.Subscription(function () {
+            _this.currentObservers = null;
+            arrRemove_1.arrRemove(observers, subscriber);
+        });
     };
     Subject.prototype._checkFinalizedStatuses = function (subscriber) {
         var _a = this, hasError = _a.hasError, thrownError = _a.thrownError, isStopped = _a.isStopped;
@@ -36636,27 +35242,6 @@ var __extends = (this && this.__extends) || (function () {
         d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
     };
 })();
-var __read = (this && this.__read) || function (o, n) {
-    var m = typeof Symbol === "function" && o[Symbol.iterator];
-    if (!m) return o;
-    var i = m.call(o), r, ar = [], e;
-    try {
-        while ((n === void 0 || n-- > 0) && !(r = i.next()).done) ar.push(r.value);
-    }
-    catch (error) { e = { error: error }; }
-    finally {
-        try {
-            if (r && !r.done && (m = i["return"])) m.call(i);
-        }
-        finally { if (e) throw e.error; }
-    }
-    return ar;
-};
-var __spreadArray = (this && this.__spreadArray) || function (to, from) {
-    for (var i = 0, il = from.length, j = to.length; i < il; i++, j++)
-        to[j] = from[i];
-    return to;
-};
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.EMPTY_OBSERVER = exports.SafeSubscriber = exports.Subscriber = void 0;
 var isFunction_1 = __nccwpck_require__(67206);
@@ -36741,56 +35326,92 @@ var Subscriber = (function (_super) {
     return Subscriber;
 }(Subscription_1.Subscription));
 exports.Subscriber = Subscriber;
+var _bind = Function.prototype.bind;
+function bind(fn, thisArg) {
+    return _bind.call(fn, thisArg);
+}
+var ConsumerObserver = (function () {
+    function ConsumerObserver(partialObserver) {
+        this.partialObserver = partialObserver;
+    }
+    ConsumerObserver.prototype.next = function (value) {
+        var partialObserver = this.partialObserver;
+        if (partialObserver.next) {
+            try {
+                partialObserver.next(value);
+            }
+            catch (error) {
+                handleUnhandledError(error);
+            }
+        }
+    };
+    ConsumerObserver.prototype.error = function (err) {
+        var partialObserver = this.partialObserver;
+        if (partialObserver.error) {
+            try {
+                partialObserver.error(err);
+            }
+            catch (error) {
+                handleUnhandledError(error);
+            }
+        }
+        else {
+            handleUnhandledError(err);
+        }
+    };
+    ConsumerObserver.prototype.complete = function () {
+        var partialObserver = this.partialObserver;
+        if (partialObserver.complete) {
+            try {
+                partialObserver.complete();
+            }
+            catch (error) {
+                handleUnhandledError(error);
+            }
+        }
+    };
+    return ConsumerObserver;
+}());
 var SafeSubscriber = (function (_super) {
     __extends(SafeSubscriber, _super);
     function SafeSubscriber(observerOrNext, error, complete) {
         var _this = _super.call(this) || this;
-        var next;
-        if (isFunction_1.isFunction(observerOrNext)) {
-            next = observerOrNext;
+        var partialObserver;
+        if (isFunction_1.isFunction(observerOrNext) || !observerOrNext) {
+            partialObserver = {
+                next: observerOrNext !== null && observerOrNext !== void 0 ? observerOrNext : undefined,
+                error: error !== null && error !== void 0 ? error : undefined,
+                complete: complete !== null && complete !== void 0 ? complete : undefined,
+            };
         }
-        else if (observerOrNext) {
-            (next = observerOrNext.next, error = observerOrNext.error, complete = observerOrNext.complete);
+        else {
             var context_1;
             if (_this && config_1.config.useDeprecatedNextContext) {
                 context_1 = Object.create(observerOrNext);
                 context_1.unsubscribe = function () { return _this.unsubscribe(); };
+                partialObserver = {
+                    next: observerOrNext.next && bind(observerOrNext.next, context_1),
+                    error: observerOrNext.error && bind(observerOrNext.error, context_1),
+                    complete: observerOrNext.complete && bind(observerOrNext.complete, context_1),
+                };
             }
             else {
-                context_1 = observerOrNext;
+                partialObserver = observerOrNext;
             }
-            next = next === null || next === void 0 ? void 0 : next.bind(context_1);
-            error = error === null || error === void 0 ? void 0 : error.bind(context_1);
-            complete = complete === null || complete === void 0 ? void 0 : complete.bind(context_1);
         }
-        _this.destination = {
-            next: next ? wrapForErrorHandling(next, _this) : noop_1.noop,
-            error: wrapForErrorHandling(error !== null && error !== void 0 ? error : defaultErrorHandler, _this),
-            complete: complete ? wrapForErrorHandling(complete, _this) : noop_1.noop,
-        };
+        _this.destination = new ConsumerObserver(partialObserver);
         return _this;
     }
     return SafeSubscriber;
 }(Subscriber));
 exports.SafeSubscriber = SafeSubscriber;
-function wrapForErrorHandling(handler, instance) {
-    return function () {
-        var args = [];
-        for (var _i = 0; _i < arguments.length; _i++) {
-            args[_i] = arguments[_i];
-        }
-        try {
-            handler.apply(void 0, __spreadArray([], __read(args)));
-        }
-        catch (err) {
-            if (config_1.config.useDeprecatedSynchronousErrorHandling) {
-                errorContext_1.captureError(err);
-            }
-            else {
-                reportUnhandledError_1.reportUnhandledError(err);
-            }
-        }
-    };
+function handleUnhandledError(error) {
+    if (config_1.config.useDeprecatedSynchronousErrorHandling) {
+        errorContext_1.captureError(error);
+    }
+    else {
+        reportUnhandledError_1.reportUnhandledError(error);
+    }
 }
 function defaultErrorHandler(err) {
     throw err;
@@ -36856,7 +35477,7 @@ var Subscription = (function () {
         this.initialTeardown = initialTeardown;
         this.closed = false;
         this._parentage = null;
-        this._teardowns = null;
+        this._finalizers = null;
     }
     Subscription.prototype.unsubscribe = function () {
         var e_1, _a, e_2, _b;
@@ -36885,23 +35506,23 @@ var Subscription = (function () {
                     _parentage.remove(this);
                 }
             }
-            var initialTeardown = this.initialTeardown;
-            if (isFunction_1.isFunction(initialTeardown)) {
+            var initialFinalizer = this.initialTeardown;
+            if (isFunction_1.isFunction(initialFinalizer)) {
                 try {
-                    initialTeardown();
+                    initialFinalizer();
                 }
                 catch (e) {
                     errors = e instanceof UnsubscriptionError_1.UnsubscriptionError ? e.errors : [e];
                 }
             }
-            var _teardowns = this._teardowns;
-            if (_teardowns) {
-                this._teardowns = null;
+            var _finalizers = this._finalizers;
+            if (_finalizers) {
+                this._finalizers = null;
                 try {
-                    for (var _teardowns_1 = __values(_teardowns), _teardowns_1_1 = _teardowns_1.next(); !_teardowns_1_1.done; _teardowns_1_1 = _teardowns_1.next()) {
-                        var teardown_1 = _teardowns_1_1.value;
+                    for (var _finalizers_1 = __values(_finalizers), _finalizers_1_1 = _finalizers_1.next(); !_finalizers_1_1.done; _finalizers_1_1 = _finalizers_1.next()) {
+                        var finalizer = _finalizers_1_1.value;
                         try {
-                            execTeardown(teardown_1);
+                            execFinalizer(finalizer);
                         }
                         catch (err) {
                             errors = errors !== null && errors !== void 0 ? errors : [];
@@ -36917,7 +35538,7 @@ var Subscription = (function () {
                 catch (e_2_1) { e_2 = { error: e_2_1 }; }
                 finally {
                     try {
-                        if (_teardowns_1_1 && !_teardowns_1_1.done && (_b = _teardowns_1.return)) _b.call(_teardowns_1);
+                        if (_finalizers_1_1 && !_finalizers_1_1.done && (_b = _finalizers_1.return)) _b.call(_finalizers_1);
                     }
                     finally { if (e_2) throw e_2.error; }
                 }
@@ -36931,7 +35552,7 @@ var Subscription = (function () {
         var _a;
         if (teardown && teardown !== this) {
             if (this.closed) {
-                execTeardown(teardown);
+                execFinalizer(teardown);
             }
             else {
                 if (teardown instanceof Subscription) {
@@ -36940,7 +35561,7 @@ var Subscription = (function () {
                     }
                     teardown._addParent(this);
                 }
-                (this._teardowns = (_a = this._teardowns) !== null && _a !== void 0 ? _a : []).push(teardown);
+                (this._finalizers = (_a = this._finalizers) !== null && _a !== void 0 ? _a : []).push(teardown);
             }
         }
     };
@@ -36962,8 +35583,8 @@ var Subscription = (function () {
         }
     };
     Subscription.prototype.remove = function (teardown) {
-        var _teardowns = this._teardowns;
-        _teardowns && arrRemove_1.arrRemove(_teardowns, teardown);
+        var _finalizers = this._finalizers;
+        _finalizers && arrRemove_1.arrRemove(_finalizers, teardown);
         if (teardown instanceof Subscription) {
             teardown._removeParent(this);
         }
@@ -36982,12 +35603,12 @@ function isSubscription(value) {
         (value && 'closed' in value && isFunction_1.isFunction(value.remove) && isFunction_1.isFunction(value.add) && isFunction_1.isFunction(value.unsubscribe)));
 }
 exports.isSubscription = isSubscription;
-function execTeardown(teardown) {
-    if (isFunction_1.isFunction(teardown)) {
-        teardown();
+function execFinalizer(finalizer) {
+    if (isFunction_1.isFunction(finalizer)) {
+        finalizer();
     }
     else {
-        teardown.unsubscribe();
+        finalizer.unsubscribe();
     }
 }
 //# sourceMappingURL=Subscription.js.map
@@ -37148,7 +35769,7 @@ var ConnectableObservable = (function (_super) {
         if (!connection) {
             connection = this._connection = new Subscription_1.Subscription();
             var subject_1 = this.getSubject();
-            connection.add(this.source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subject_1, undefined, function () {
+            connection.add(this.source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subject_1, undefined, function () {
                 _this._teardown();
                 subject_1.complete();
             }, function (err) {
@@ -37361,7 +35982,7 @@ function combineLatestInit(observables, scheduler, valueTransform) {
                 maybeSchedule(scheduler, function () {
                     var source = from_1.from(observables[i], scheduler);
                     var hasFirstValue = false;
-                    source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+                    source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
                         values[i] = value;
                         if (!hasFirstValue) {
                             hasFirstValue = true;
@@ -37500,7 +36121,7 @@ function animationFramesFactory(timestampProvider) {
             var now = provider.now();
             subscriber.next({
                 timestamp: timestampProvider ? now : timestamp,
-                elapsed: now - start
+                elapsed: now - start,
             });
             if (!subscriber.closed) {
                 subscription.add(schedule(run));
@@ -37567,7 +36188,7 @@ function forkJoin() {
         var remainingEmissions = length;
         var _loop_1 = function (sourceIndex) {
             var hasValue = false;
-            innerFrom_1.innerFrom(sources[sourceIndex]).subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+            innerFrom_1.innerFrom(sources[sourceIndex]).subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
                 if (!hasValue) {
                     hasValue = true;
                     remainingEmissions--;
@@ -38233,7 +36854,7 @@ function raceInit(sources) {
     return function (subscriber) {
         var subscriptions = [];
         var _loop_1 = function (i) {
-            subscriptions.push(innerFrom_1.innerFrom(sources[i]).subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+            subscriptions.push(innerFrom_1.innerFrom(sources[i]).subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
                 if (subscriptions) {
                     for (var s = 0; s < subscriptions.length; s++) {
                         s !== i && subscriptions[s].unsubscribe();
@@ -38442,7 +37063,7 @@ function zip() {
                 buffers = completed = null;
             });
             var _loop_1 = function (sourceIndex) {
-                innerFrom_1.innerFrom(sources[sourceIndex]).subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+                innerFrom_1.innerFrom(sources[sourceIndex]).subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
                     buffers[sourceIndex].push(value);
                     if (buffers.every(function (buffer) { return buffer.length; })) {
                         var result = buffers.map(function (buffer) { return buffer.shift(); });
@@ -38491,13 +37112,18 @@ var __extends = (this && this.__extends) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.OperatorSubscriber = void 0;
+exports.OperatorSubscriber = exports.createOperatorSubscriber = void 0;
 var Subscriber_1 = __nccwpck_require__(67121);
+function createOperatorSubscriber(destination, onNext, onComplete, onError, onFinalize) {
+    return new OperatorSubscriber(destination, onNext, onComplete, onError, onFinalize);
+}
+exports.createOperatorSubscriber = createOperatorSubscriber;
 var OperatorSubscriber = (function (_super) {
     __extends(OperatorSubscriber, _super);
-    function OperatorSubscriber(destination, onNext, onComplete, onError, onFinalize) {
+    function OperatorSubscriber(destination, onNext, onComplete, onError, onFinalize, shouldUnsubscribe) {
         var _this = _super.call(this, destination) || this;
         _this.onFinalize = onFinalize;
+        _this.shouldUnsubscribe = shouldUnsubscribe;
         _this._next = onNext
             ? function (value) {
                 try {
@@ -38538,9 +37164,11 @@ var OperatorSubscriber = (function (_super) {
     }
     OperatorSubscriber.prototype.unsubscribe = function () {
         var _a;
-        var closed = this.closed;
-        _super.prototype.unsubscribe.call(this);
-        !closed && ((_a = this.onFinalize) === null || _a === void 0 ? void 0 : _a.call(this));
+        if (!this.shouldUnsubscribe || this.shouldUnsubscribe()) {
+            var closed_1 = this.closed;
+            _super.prototype.unsubscribe.call(this);
+            !closed_1 && ((_a = this.onFinalize) === null || _a === void 0 ? void 0 : _a.call(this));
+        }
     };
     return OperatorSubscriber;
 }(Subscriber_1.Subscriber));
@@ -38580,11 +37208,11 @@ function audit(durationSelector) {
             durationSubscriber = null;
             isComplete && subscriber.complete();
         };
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             hasValue = true;
             lastValue = value;
             if (!durationSubscriber) {
-                innerFrom_1.innerFrom(durationSelector(value)).subscribe((durationSubscriber = new OperatorSubscriber_1.OperatorSubscriber(subscriber, endDuration, cleanupDuration)));
+                innerFrom_1.innerFrom(durationSelector(value)).subscribe((durationSubscriber = OperatorSubscriber_1.createOperatorSubscriber(subscriber, endDuration, cleanupDuration)));
             }
         }, function () {
             isComplete = true;
@@ -38608,7 +37236,7 @@ var async_1 = __nccwpck_require__(76072);
 var audit_1 = __nccwpck_require__(82704);
 var timer_1 = __nccwpck_require__(59757);
 function auditTime(duration, scheduler) {
-    if (scheduler === void 0) { scheduler = async_1.async; }
+    if (scheduler === void 0) { scheduler = async_1.asyncScheduler; }
     return audit_1.audit(function () { return timer_1.timer(duration, scheduler); });
 }
 exports.auditTime = auditTime;
@@ -38629,11 +37257,11 @@ var OperatorSubscriber_1 = __nccwpck_require__(69549);
 function buffer(closingNotifier) {
     return lift_1.operate(function (source, subscriber) {
         var currentBuffer = [];
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) { return currentBuffer.push(value); }, function () {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) { return currentBuffer.push(value); }, function () {
             subscriber.next(currentBuffer);
             subscriber.complete();
         }));
-        closingNotifier.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function () {
+        closingNotifier.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function () {
             var b = currentBuffer;
             currentBuffer = [];
             subscriber.next(b);
@@ -38675,7 +37303,7 @@ function bufferCount(bufferSize, startBufferEvery) {
     return lift_1.operate(function (source, subscriber) {
         var buffers = [];
         var count = 0;
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             var e_1, _a, e_2, _b;
             var toEmit = null;
             if (count++ % startBufferEvery === 0) {
@@ -38804,7 +37432,7 @@ function bufferTime(bufferTimeSpan) {
             restartOnEmit = true;
         }
         startBuffer();
-        var bufferTimeSubscriber = new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        var bufferTimeSubscriber = OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             var e_1, _a;
             var recordsCopy = bufferRecords.slice();
             try {
@@ -38865,7 +37493,7 @@ var arrRemove_1 = __nccwpck_require__(68499);
 function bufferToggle(openings, closingSelector) {
     return lift_1.operate(function (source, subscriber) {
         var buffers = [];
-        innerFrom_1.innerFrom(openings).subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (openValue) {
+        innerFrom_1.innerFrom(openings).subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (openValue) {
             var buffer = [];
             buffers.push(buffer);
             var closingSubscription = new Subscription_1.Subscription();
@@ -38874,9 +37502,9 @@ function bufferToggle(openings, closingSelector) {
                 subscriber.next(buffer);
                 closingSubscription.unsubscribe();
             };
-            closingSubscription.add(innerFrom_1.innerFrom(closingSelector(openValue)).subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, emitBuffer, noop_1.noop)));
+            closingSubscription.add(innerFrom_1.innerFrom(closingSelector(openValue)).subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, emitBuffer, noop_1.noop)));
         }, noop_1.noop));
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             var e_1, _a;
             try {
                 for (var buffers_1 = __values(buffers), buffers_1_1 = buffers_1.next(); !buffers_1_1.done; buffers_1_1 = buffers_1.next()) {
@@ -38924,10 +37552,10 @@ function bufferWhen(closingSelector) {
             var b = buffer;
             buffer = [];
             b && subscriber.next(b);
-            innerFrom_1.innerFrom(closingSelector()).subscribe((closingSubscriber = new OperatorSubscriber_1.OperatorSubscriber(subscriber, openBuffer, noop_1.noop)));
+            innerFrom_1.innerFrom(closingSelector()).subscribe((closingSubscriber = OperatorSubscriber_1.createOperatorSubscriber(subscriber, openBuffer, noop_1.noop)));
         };
         openBuffer();
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) { return buffer === null || buffer === void 0 ? void 0 : buffer.push(value); }, function () {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) { return buffer === null || buffer === void 0 ? void 0 : buffer.push(value); }, function () {
             buffer && subscriber.next(buffer);
             subscriber.complete();
         }, undefined, function () { return (buffer = closingSubscriber = null); }));
@@ -38938,7 +37566,7 @@ exports.bufferWhen = bufferWhen;
 
 /***/ }),
 
-/***/ 8869:
+/***/ 37765:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -38953,7 +37581,7 @@ function catchError(selector) {
         var innerSub = null;
         var syncUnsub = false;
         var handledResult;
-        innerSub = source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, undefined, undefined, function (err) {
+        innerSub = source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, undefined, undefined, function (err) {
             handledResult = innerFrom_1.innerFrom(selector(err, catchError(selector)(source)));
             if (innerSub) {
                 innerSub.unsubscribe();
@@ -39306,11 +37934,11 @@ function debounce(durationSelector) {
                 subscriber.next(value);
             }
         };
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             durationSubscriber === null || durationSubscriber === void 0 ? void 0 : durationSubscriber.unsubscribe();
             hasValue = true;
             lastValue = value;
-            durationSubscriber = new OperatorSubscriber_1.OperatorSubscriber(subscriber, emit, noop_1.noop);
+            durationSubscriber = OperatorSubscriber_1.createOperatorSubscriber(subscriber, emit, noop_1.noop);
             innerFrom_1.innerFrom(durationSelector(value)).subscribe(durationSubscriber);
         }, function () {
             emit();
@@ -39360,7 +37988,7 @@ function debounceTime(dueTime, scheduler) {
             }
             emit();
         }
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             lastValue = value;
             lastTime = scheduler.now();
             if (!activeTask) {
@@ -39392,7 +38020,7 @@ var OperatorSubscriber_1 = __nccwpck_require__(69549);
 function defaultIfEmpty(defaultValue) {
     return lift_1.operate(function (source, subscriber) {
         var hasValue = false;
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             hasValue = true;
             subscriber.next(value);
         }, function () {
@@ -39465,7 +38093,7 @@ var lift_1 = __nccwpck_require__(38669);
 var OperatorSubscriber_1 = __nccwpck_require__(69549);
 function dematerialize() {
     return lift_1.operate(function (source, subscriber) {
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (notification) { return Notification_1.observeNotification(notification, subscriber); }));
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (notification) { return Notification_1.observeNotification(notification, subscriber); }));
     });
 }
 exports.dematerialize = dematerialize;
@@ -39486,14 +38114,14 @@ var noop_1 = __nccwpck_require__(11642);
 function distinct(keySelector, flushes) {
     return lift_1.operate(function (source, subscriber) {
         var distinctKeys = new Set();
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             var key = keySelector ? keySelector(value) : value;
             if (!distinctKeys.has(key)) {
                 distinctKeys.add(key);
                 subscriber.next(value);
             }
         }));
-        flushes === null || flushes === void 0 ? void 0 : flushes.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function () { return distinctKeys.clear(); }, noop_1.noop));
+        flushes === null || flushes === void 0 ? void 0 : flushes.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function () { return distinctKeys.clear(); }, noop_1.noop));
     });
 }
 exports.distinct = distinct;
@@ -39517,7 +38145,7 @@ function distinctUntilChanged(comparator, keySelector) {
     return lift_1.operate(function (source, subscriber) {
         var previousKey;
         var first = true;
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             var currentKey = keySelector(value);
             if (first || !comparator(previousKey, currentKey)) {
                 first = false;
@@ -39631,7 +38259,7 @@ var OperatorSubscriber_1 = __nccwpck_require__(69549);
 function every(predicate, thisArg) {
     return lift_1.operate(function (source, subscriber) {
         var index = 0;
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             if (!predicate.call(thisArg, value, index++, source)) {
                 subscriber.next(false);
                 subscriber.complete();
@@ -39674,9 +38302,9 @@ function exhaustAll() {
     return lift_1.operate(function (source, subscriber) {
         var isComplete = false;
         var innerSub = null;
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (inner) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (inner) {
             if (!innerSub) {
-                innerSub = innerFrom_1.innerFrom(inner).subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, undefined, function () {
+                innerSub = innerFrom_1.innerFrom(inner).subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, undefined, function () {
                     innerSub = null;
                     isComplete && subscriber.complete();
                 }));
@@ -39713,9 +38341,9 @@ function exhaustMap(project, resultSelector) {
         var index = 0;
         var innerSub = null;
         var isComplete = false;
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (outerValue) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (outerValue) {
             if (!innerSub) {
-                innerSub = new OperatorSubscriber_1.OperatorSubscriber(subscriber, undefined, function () {
+                innerSub = OperatorSubscriber_1.createOperatorSubscriber(subscriber, undefined, function () {
                     innerSub = null;
                     isComplete && subscriber.complete();
                 });
@@ -39765,7 +38393,7 @@ var OperatorSubscriber_1 = __nccwpck_require__(69549);
 function filter(predicate, thisArg) {
     return lift_1.operate(function (source, subscriber) {
         var index = 0;
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) { return predicate.call(thisArg, value, index++) && subscriber.next(value); }));
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) { return predicate.call(thisArg, value, index++) && subscriber.next(value); }));
     });
 }
 exports.filter = filter;
@@ -39813,7 +38441,7 @@ function createFind(predicate, thisArg, emit) {
     var findIndex = emit === 'index';
     return function (source, subscriber) {
         var index = 0;
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             var i = index++;
             if (predicate.call(thisArg, value, i, source)) {
                 subscriber.next(findIndex ? i : value);
@@ -39885,25 +38513,10 @@ exports.flatMap = mergeMap_1.mergeMap;
 /***/ }),
 
 /***/ 51650:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
-var __extends = (this && this.__extends) || (function () {
-    var extendStatics = function (d, b) {
-        extendStatics = Object.setPrototypeOf ||
-            ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
-            function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
-        return extendStatics(d, b);
-    };
-    return function (d, b) {
-        if (typeof b !== "function" && b !== null)
-            throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
-        extendStatics(d, b);
-        function __() { this.constructor = d; }
-        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
-    };
-})();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.groupBy = void 0;
 var Observable_1 = __nccwpck_require__(53014);
@@ -39926,7 +38539,9 @@ function groupBy(keySelector, elementOrOptions, duration, connector) {
             cb(subscriber);
         };
         var handleError = function (err) { return notify(function (consumer) { return consumer.error(err); }); };
-        var groupBySourceSubscriber = new GroupBySubscriber(subscriber, function (value) {
+        var activeGroups = 0;
+        var teardownAttempted = false;
+        var groupBySourceSubscriber = new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
             try {
                 var key_1 = keySelector(value);
                 var group_1 = groups.get(key_1);
@@ -39935,7 +38550,7 @@ function groupBy(keySelector, elementOrOptions, duration, connector) {
                     var grouped = createGroupedObservable(key_1, group_1);
                     subscriber.next(grouped);
                     if (duration) {
-                        var durationSubscriber_1 = new OperatorSubscriber_1.OperatorSubscriber(group_1, function () {
+                        var durationSubscriber_1 = OperatorSubscriber_1.createOperatorSubscriber(group_1, function () {
                             group_1.complete();
                             durationSubscriber_1 === null || durationSubscriber_1 === void 0 ? void 0 : durationSubscriber_1.unsubscribe();
                         }, undefined, undefined, function () { return groups.delete(key_1); });
@@ -39947,17 +38562,18 @@ function groupBy(keySelector, elementOrOptions, duration, connector) {
             catch (err) {
                 handleError(err);
             }
-        }, function () { return notify(function (consumer) { return consumer.complete(); }); }, handleError, function () { return groups.clear(); });
+        }, function () { return notify(function (consumer) { return consumer.complete(); }); }, handleError, function () { return groups.clear(); }, function () {
+            teardownAttempted = true;
+            return activeGroups === 0;
+        });
         source.subscribe(groupBySourceSubscriber);
         function createGroupedObservable(key, groupSubject) {
             var result = new Observable_1.Observable(function (groupSubscriber) {
-                groupBySourceSubscriber.activeGroups++;
+                activeGroups++;
                 var innerSub = groupSubject.subscribe(groupSubscriber);
                 return function () {
                     innerSub.unsubscribe();
-                    --groupBySourceSubscriber.activeGroups === 0 &&
-                        groupBySourceSubscriber.teardownAttempted &&
-                        groupBySourceSubscriber.unsubscribe();
+                    --activeGroups === 0 && teardownAttempted && groupBySourceSubscriber.unsubscribe();
                 };
             });
             result.key = key;
@@ -39966,20 +38582,6 @@ function groupBy(keySelector, elementOrOptions, duration, connector) {
     });
 }
 exports.groupBy = groupBy;
-var GroupBySubscriber = (function (_super) {
-    __extends(GroupBySubscriber, _super);
-    function GroupBySubscriber() {
-        var _this = _super !== null && _super.apply(this, arguments) || this;
-        _this.activeGroups = 0;
-        _this.teardownAttempted = false;
-        return _this;
-    }
-    GroupBySubscriber.prototype.unsubscribe = function () {
-        this.teardownAttempted = true;
-        this.activeGroups === 0 && _super.prototype.unsubscribe.call(this);
-    };
-    return GroupBySubscriber;
-}(OperatorSubscriber_1.OperatorSubscriber));
 //# sourceMappingURL=groupBy.js.map
 
 /***/ }),
@@ -39996,7 +38598,7 @@ var OperatorSubscriber_1 = __nccwpck_require__(69549);
 var noop_1 = __nccwpck_require__(11642);
 function ignoreElements() {
     return lift_1.operate(function (source, subscriber) {
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, noop_1.noop));
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, noop_1.noop));
     });
 }
 exports.ignoreElements = ignoreElements;
@@ -40015,7 +38617,7 @@ var lift_1 = __nccwpck_require__(38669);
 var OperatorSubscriber_1 = __nccwpck_require__(69549);
 function isEmpty() {
     return lift_1.operate(function (source, subscriber) {
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function () {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function () {
             subscriber.next(false);
             subscriber.complete();
         }, function () {
@@ -40085,7 +38687,7 @@ var OperatorSubscriber_1 = __nccwpck_require__(69549);
 function map(project, thisArg) {
     return lift_1.operate(function (source, subscriber) {
         var index = 0;
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             subscriber.next(project.call(thisArg, value, index++));
         }));
     });
@@ -40123,7 +38725,7 @@ var lift_1 = __nccwpck_require__(38669);
 var OperatorSubscriber_1 = __nccwpck_require__(69549);
 function materialize() {
     return lift_1.operate(function (source, subscriber) {
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             subscriber.next(Notification_1.Notification.createNext(value));
         }, function () {
             subscriber.next(Notification_1.Notification.createComplete());
@@ -40234,7 +38836,7 @@ exports.mergeInternals = void 0;
 var innerFrom_1 = __nccwpck_require__(57105);
 var executeSchedule_1 = __nccwpck_require__(82877);
 var OperatorSubscriber_1 = __nccwpck_require__(69549);
-function mergeInternals(source, subscriber, project, concurrent, onBeforeNext, expand, innerSubScheduler, additionalTeardown) {
+function mergeInternals(source, subscriber, project, concurrent, onBeforeNext, expand, innerSubScheduler, additionalFinalizer) {
     var buffer = [];
     var active = 0;
     var index = 0;
@@ -40249,7 +38851,7 @@ function mergeInternals(source, subscriber, project, concurrent, onBeforeNext, e
         expand && subscriber.next(value);
         active++;
         var innerComplete = false;
-        innerFrom_1.innerFrom(project(value, index++)).subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (innerValue) {
+        innerFrom_1.innerFrom(project(value, index++)).subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (innerValue) {
             onBeforeNext === null || onBeforeNext === void 0 ? void 0 : onBeforeNext(innerValue);
             if (expand) {
                 outerNext(innerValue);
@@ -40283,12 +38885,12 @@ function mergeInternals(source, subscriber, project, concurrent, onBeforeNext, e
             }
         }));
     };
-    source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, outerNext, function () {
+    source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, outerNext, function () {
         isComplete = true;
         checkComplete();
     }));
     return function () {
-        additionalTeardown === null || additionalTeardown === void 0 ? void 0 : additionalTeardown();
+        additionalFinalizer === null || additionalFinalizer === void 0 ? void 0 : additionalFinalizer();
     };
 }
 exports.mergeInternals = mergeInternals;
@@ -40465,7 +39067,7 @@ var OperatorSubscriber_1 = __nccwpck_require__(69549);
 function observeOn(scheduler, delay) {
     if (delay === void 0) { delay = 0; }
     return lift_1.operate(function (source, subscriber) {
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) { return executeSchedule_1.executeSchedule(subscriber, scheduler, function () { return subscriber.next(value); }, delay); }, function () { return executeSchedule_1.executeSchedule(subscriber, scheduler, function () { return subscriber.complete(); }, delay); }, function (err) { return executeSchedule_1.executeSchedule(subscriber, scheduler, function () { return subscriber.error(err); }, delay); }));
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) { return executeSchedule_1.executeSchedule(subscriber, scheduler, function () { return subscriber.next(value); }, delay); }, function () { return executeSchedule_1.executeSchedule(subscriber, scheduler, function () { return subscriber.complete(); }, delay); }, function (err) { return executeSchedule_1.executeSchedule(subscriber, scheduler, function () { return subscriber.error(err); }, delay); }));
     });
 }
 exports.observeOn = observeOn;
@@ -40525,8 +39127,8 @@ function onErrorResumeNext() {
                         subscribeNext();
                         return;
                     }
-                    var innerSub = new OperatorSubscriber_1.OperatorSubscriber(subscriber, undefined, noop_1.noop, noop_1.noop);
-                    subscriber.add(nextSource.subscribe(innerSub));
+                    var innerSub = OperatorSubscriber_1.createOperatorSubscriber(subscriber, undefined, noop_1.noop, noop_1.noop);
+                    nextSource.subscribe(innerSub);
                     innerSub.add(subscribeNext);
                 }
                 else {
@@ -40555,7 +39157,7 @@ function pairwise() {
     return lift_1.operate(function (source, subscriber) {
         var prev;
         var hasPrev = false;
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             var p = prev;
             prev = value;
             hasPrev && subscriber.next([p, value]);
@@ -40822,7 +39424,7 @@ function refCount() {
     return lift_1.operate(function (source, subscriber) {
         var connection = null;
         source._refCount++;
-        var refCounter = new OperatorSubscriber_1.OperatorSubscriber(subscriber, undefined, undefined, undefined, function () {
+        var refCounter = OperatorSubscriber_1.createOperatorSubscriber(subscriber, undefined, undefined, undefined, function () {
             if (!source || source._refCount <= 0 || 0 < --source._refCount) {
                 connection = null;
                 return;
@@ -40880,7 +39482,7 @@ function repeat(countOrConfig) {
                 sourceSub = null;
                 if (delay != null) {
                     var notifier = typeof delay === 'number' ? timer_1.timer(delay) : innerFrom_1.innerFrom(delay(soFar));
-                    var notifierSubscriber_1 = new OperatorSubscriber_1.OperatorSubscriber(subscriber, function () {
+                    var notifierSubscriber_1 = OperatorSubscriber_1.createOperatorSubscriber(subscriber, function () {
                         notifierSubscriber_1.unsubscribe();
                         subscribeToSource();
                     });
@@ -40892,7 +39494,7 @@ function repeat(countOrConfig) {
             };
             var subscribeToSource = function () {
                 var syncUnsub = false;
-                sourceSub = source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, undefined, function () {
+                sourceSub = source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, undefined, function () {
                     if (++soFar < count) {
                         if (sourceSub) {
                             resubscribe();
@@ -40938,7 +39540,7 @@ function repeatWhen(notifier) {
         var getCompletionSubject = function () {
             if (!completions$) {
                 completions$ = new Subject_1.Subject();
-                notifier(completions$).subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function () {
+                notifier(completions$).subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function () {
                     if (innerSub) {
                         subscribeForRepeatWhen();
                     }
@@ -40954,7 +39556,7 @@ function repeatWhen(notifier) {
         };
         var subscribeForRepeatWhen = function () {
             isMainComplete = false;
-            innerSub = source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, undefined, function () {
+            innerSub = source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, undefined, function () {
                 isMainComplete = true;
                 !checkComplete() && getCompletionSubject().next();
             }));
@@ -41004,7 +39606,7 @@ function retry(configOrCount) {
             var innerSub;
             var subscribeForRetry = function () {
                 var syncUnsub = false;
-                innerSub = source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+                innerSub = source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
                     if (resetOnSuccess) {
                         soFar = 0;
                     }
@@ -41023,7 +39625,7 @@ function retry(configOrCount) {
                         };
                         if (delay != null) {
                             var notifier = typeof delay === 'number' ? timer_1.timer(delay) : innerFrom_1.innerFrom(delay(err, soFar));
-                            var notifierSubscriber_1 = new OperatorSubscriber_1.OperatorSubscriber(subscriber, function () {
+                            var notifierSubscriber_1 = OperatorSubscriber_1.createOperatorSubscriber(subscriber, function () {
                                 notifierSubscriber_1.unsubscribe();
                                 resub_1();
                             }, function () {
@@ -41069,10 +39671,10 @@ function retryWhen(notifier) {
         var syncResub = false;
         var errors$;
         var subscribeForRetryWhen = function () {
-            innerSub = source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, undefined, undefined, function (err) {
+            innerSub = source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, undefined, undefined, function (err) {
                 if (!errors$) {
                     errors$ = new Subject_1.Subject();
-                    notifier(errors$).subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function () {
+                    notifier(errors$).subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function () {
                         return innerSub ? subscribeForRetryWhen() : (syncResub = true);
                     }));
                 }
@@ -41109,19 +39711,18 @@ function sample(notifier) {
     return lift_1.operate(function (source, subscriber) {
         var hasValue = false;
         var lastValue = null;
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             hasValue = true;
             lastValue = value;
         }));
-        var emit = function () {
+        notifier.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function () {
             if (hasValue) {
                 hasValue = false;
                 var value = lastValue;
                 lastValue = null;
                 subscriber.next(value);
             }
-        };
-        notifier.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, emit, noop_1.noop));
+        }, noop_1.noop));
     });
 }
 exports.sample = sample;
@@ -41178,7 +39779,7 @@ function scanInternals(accumulator, seed, hasSeed, emitOnNext, emitBeforeComplet
         var hasState = hasSeed;
         var state = seed;
         var index = 0;
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             var i = index++;
             state = hasState
                 ?
@@ -41217,7 +39818,7 @@ function sequenceEqual(compareTo, comparator) {
             subscriber.complete();
         };
         var createSubscriber = function (selfState, otherState) {
-            var sequenceEqualSubscriber = new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (a) {
+            var sequenceEqualSubscriber = OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (a) {
                 var buffer = otherState.buffer, complete = otherState.complete;
                 if (buffer.length === 0) {
                     complete ? emit(false) : selfState.buffer.push(a);
@@ -41369,14 +39970,11 @@ exports.shareReplay = void 0;
 var ReplaySubject_1 = __nccwpck_require__(22351);
 var share_1 = __nccwpck_require__(48960);
 function shareReplay(configOrBufferSize, windowTime, scheduler) {
-    var _a, _b;
+    var _a, _b, _c;
     var bufferSize;
     var refCount = false;
     if (configOrBufferSize && typeof configOrBufferSize === 'object') {
-        bufferSize = (_a = configOrBufferSize.bufferSize) !== null && _a !== void 0 ? _a : Infinity;
-        windowTime = (_b = configOrBufferSize.windowTime) !== null && _b !== void 0 ? _b : Infinity;
-        refCount = !!configOrBufferSize.refCount;
-        scheduler = configOrBufferSize.scheduler;
+        (_a = configOrBufferSize.bufferSize, bufferSize = _a === void 0 ? Infinity : _a, _b = configOrBufferSize.windowTime, windowTime = _b === void 0 ? Infinity : _b, _c = configOrBufferSize.refCount, refCount = _c === void 0 ? false : _c, scheduler = configOrBufferSize.scheduler);
     }
     else {
         bufferSize = configOrBufferSize !== null && configOrBufferSize !== void 0 ? configOrBufferSize : Infinity;
@@ -41385,7 +39983,7 @@ function shareReplay(configOrBufferSize, windowTime, scheduler) {
         connector: function () { return new ReplaySubject_1.ReplaySubject(bufferSize, windowTime, scheduler); },
         resetOnError: true,
         resetOnComplete: false,
-        resetOnRefCountZero: refCount
+        resetOnRefCountZero: refCount,
     });
 }
 exports.shareReplay = shareReplay;
@@ -41411,7 +40009,7 @@ function single(predicate) {
         var singleValue;
         var seenValue = false;
         var index = 0;
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             seenValue = true;
             if (!predicate || predicate(value, index++, source)) {
                 hasValue && subscriber.error(new SequenceError_1.SequenceError('Too many matching values'));
@@ -41467,7 +40065,7 @@ function skipLast(skipCount) {
         : lift_1.operate(function (source, subscriber) {
             var ring = new Array(skipCount);
             var seen = 0;
-            source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+            source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
                 var valueIndex = seen++;
                 if (valueIndex < skipCount) {
                     ring[valueIndex] = value;
@@ -41503,12 +40101,12 @@ var noop_1 = __nccwpck_require__(11642);
 function skipUntil(notifier) {
     return lift_1.operate(function (source, subscriber) {
         var taking = false;
-        var skipSubscriber = new OperatorSubscriber_1.OperatorSubscriber(subscriber, function () {
+        var skipSubscriber = OperatorSubscriber_1.createOperatorSubscriber(subscriber, function () {
             skipSubscriber === null || skipSubscriber === void 0 ? void 0 : skipSubscriber.unsubscribe();
             taking = true;
         }, noop_1.noop);
         innerFrom_1.innerFrom(notifier).subscribe(skipSubscriber);
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) { return taking && subscriber.next(value); }));
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) { return taking && subscriber.next(value); }));
     });
 }
 exports.skipUntil = skipUntil;
@@ -41529,7 +40127,7 @@ function skipWhile(predicate) {
     return lift_1.operate(function (source, subscriber) {
         var taking = false;
         var index = 0;
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) { return (taking || (taking = !predicate(value, index++))) && subscriber.next(value); }));
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) { return (taking || (taking = !predicate(value, index++))) && subscriber.next(value); }));
     });
 }
 exports.skipWhile = skipWhile;
@@ -41614,11 +40212,11 @@ function switchMap(project, resultSelector) {
         var index = 0;
         var isComplete = false;
         var checkComplete = function () { return isComplete && !innerSubscriber && subscriber.complete(); };
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             innerSubscriber === null || innerSubscriber === void 0 ? void 0 : innerSubscriber.unsubscribe();
             var innerIndex = 0;
             var outerIndex = index++;
-            innerFrom_1.innerFrom(project(value, outerIndex)).subscribe((innerSubscriber = new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (innerValue) { return subscriber.next(resultSelector ? resultSelector(value, innerValue, outerIndex, innerIndex++) : innerValue); }, function () {
+            innerFrom_1.innerFrom(project(value, outerIndex)).subscribe((innerSubscriber = OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (innerValue) { return subscriber.next(resultSelector ? resultSelector(value, innerValue, outerIndex, innerIndex++) : innerValue); }, function () {
                 innerSubscriber = null;
                 checkComplete();
             })));
@@ -41689,7 +40287,7 @@ function take(count) {
             function () { return empty_1.EMPTY; }
         : lift_1.operate(function (source, subscriber) {
             var seen = 0;
-            source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+            source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
                 if (++seen <= count) {
                     subscriber.next(value);
                     if (count <= seen) {
@@ -41730,7 +40328,7 @@ function takeLast(count) {
         ? function () { return empty_1.EMPTY; }
         : lift_1.operate(function (source, subscriber) {
             var buffer = [];
-            source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+            source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
                 buffer.push(value);
                 count < buffer.length && buffer.shift();
             }, function () {
@@ -41772,7 +40370,7 @@ var innerFrom_1 = __nccwpck_require__(57105);
 var noop_1 = __nccwpck_require__(11642);
 function takeUntil(notifier) {
     return lift_1.operate(function (source, subscriber) {
-        innerFrom_1.innerFrom(notifier).subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function () { return subscriber.complete(); }, noop_1.noop));
+        innerFrom_1.innerFrom(notifier).subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function () { return subscriber.complete(); }, noop_1.noop));
         !subscriber.closed && source.subscribe(subscriber);
     });
 }
@@ -41794,7 +40392,7 @@ function takeWhile(predicate, inclusive) {
     if (inclusive === void 0) { inclusive = false; }
     return lift_1.operate(function (source, subscriber) {
         var index = 0;
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             var result = predicate(value, index++);
             (result || inclusive) && subscriber.next(value);
             !result && subscriber.complete();
@@ -41827,7 +40425,7 @@ function tap(observerOrNext, error, complete) {
             var _a;
             (_a = tapObserver.subscribe) === null || _a === void 0 ? void 0 : _a.call(tapObserver);
             var isUnsub = true;
-            source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+            source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
                 var _a;
                 (_a = tapObserver.next) === null || _a === void 0 ? void 0 : _a.call(tapObserver, value);
                 subscriber.next(value);
@@ -41892,7 +40490,7 @@ function throttle(durationSelector, config) {
             isComplete && subscriber.complete();
         };
         var startThrottle = function (value) {
-            return (throttled = innerFrom_1.innerFrom(durationSelector(value)).subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, endThrottling, cleanupThrottling)));
+            return (throttled = innerFrom_1.innerFrom(durationSelector(value)).subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, endThrottling, cleanupThrottling)));
         };
         var send = function () {
             if (hasValue) {
@@ -41903,7 +40501,7 @@ function throttle(durationSelector, config) {
                 !isComplete && startThrottle(value);
             }
         };
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             hasValue = true;
             sendValue = value;
             !(throttled && !throttled.closed) && (leading ? send() : startThrottle(value));
@@ -41953,7 +40551,7 @@ function throwIfEmpty(errorFactory) {
     if (errorFactory === void 0) { errorFactory = defaultErrorFactory; }
     return lift_1.operate(function (source, subscriber) {
         var hasValue = false;
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             hasValue = true;
             subscriber.next(value);
         }, function () { return (hasValue ? subscriber.complete() : subscriber.error(errorFactory())); }));
@@ -41975,26 +40573,19 @@ function defaultErrorFactory() {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.TimeInterval = exports.timeInterval = void 0;
 var async_1 = __nccwpck_require__(76072);
-var scan_1 = __nccwpck_require__(25578);
-var defer_1 = __nccwpck_require__(27672);
-var map_1 = __nccwpck_require__(5987);
+var lift_1 = __nccwpck_require__(38669);
+var OperatorSubscriber_1 = __nccwpck_require__(69549);
 function timeInterval(scheduler) {
-    if (scheduler === void 0) { scheduler = async_1.async; }
-    return function (source) {
-        return defer_1.defer(function () {
-            return source.pipe(scan_1.scan(function (_a, value) {
-                var current = _a.current;
-                return ({ value: value, current: scheduler.now(), last: current });
-            }, {
-                current: scheduler.now(),
-                value: undefined,
-                last: undefined,
-            }), map_1.map(function (_a) {
-                var current = _a.current, last = _a.last, value = _a.value;
-                return new TimeInterval(value, current - last);
-            }));
-        });
-    };
+    if (scheduler === void 0) { scheduler = async_1.asyncScheduler; }
+    return lift_1.operate(function (source, subscriber) {
+        var last = scheduler.now();
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
+            var now = scheduler.now();
+            var interval = now - last;
+            last = now;
+            subscriber.next(new TimeInterval(value, interval));
+        }));
+    });
 }
 exports.timeInterval = timeInterval;
 var TimeInterval = (function () {
@@ -42033,11 +40624,7 @@ exports.TimeoutError = createErrorClass_1.createErrorClass(function (_super) {
     };
 });
 function timeout(config, schedulerArg) {
-    var _a = (isDate_1.isValidDate(config)
-        ? { first: config }
-        : typeof config === 'number'
-            ? { each: config }
-            : config), first = _a.first, each = _a.each, _b = _a.with, _with = _b === void 0 ? timeoutErrorFactory : _b, _c = _a.scheduler, scheduler = _c === void 0 ? schedulerArg !== null && schedulerArg !== void 0 ? schedulerArg : async_1.asyncScheduler : _c, _d = _a.meta, meta = _d === void 0 ? null : _d;
+    var _a = (isDate_1.isValidDate(config) ? { first: config } : typeof config === 'number' ? { each: config } : config), first = _a.first, each = _a.each, _b = _a.with, _with = _b === void 0 ? timeoutErrorFactory : _b, _c = _a.scheduler, scheduler = _c === void 0 ? schedulerArg !== null && schedulerArg !== void 0 ? schedulerArg : async_1.asyncScheduler : _c, _d = _a.meta, meta = _d === void 0 ? null : _d;
     if (first == null && each == null) {
         throw new TypeError('No timeout provided.');
     }
@@ -42061,7 +40648,7 @@ function timeout(config, schedulerArg) {
                 }
             }, delay);
         };
-        originalSourceSubscription = source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        originalSourceSubscription = source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             timerSubscription === null || timerSubscription === void 0 ? void 0 : timerSubscription.unsubscribe();
             seen++;
             subscriber.next((lastValue = value));
@@ -42072,7 +40659,7 @@ function timeout(config, schedulerArg) {
             }
             lastValue = null;
         }));
-        startTimer(first != null ? (typeof first === 'number' ? first : +first - scheduler.now()) : each);
+        !seen && startTimer(first != null ? (typeof first === 'number' ? first : +first - scheduler.now()) : each);
     });
 }
 exports.timeout = timeout;
@@ -42182,11 +40769,11 @@ function window(windowBoundaries) {
             windowSubject.error(err);
             subscriber.error(err);
         };
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) { return windowSubject === null || windowSubject === void 0 ? void 0 : windowSubject.next(value); }, function () {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) { return windowSubject === null || windowSubject === void 0 ? void 0 : windowSubject.next(value); }, function () {
             windowSubject.complete();
             subscriber.complete();
         }, errorHandler));
-        windowBoundaries.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function () {
+        windowBoundaries.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function () {
             windowSubject.complete();
             subscriber.next((windowSubject = new Subject_1.Subject()));
         }, noop_1.noop, errorHandler));
@@ -42230,7 +40817,7 @@ function windowCount(windowSize, startWindowEvery) {
         var starts = [];
         var count = 0;
         subscriber.next(windows[0].asObservable());
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             var e_1, _a;
             try {
                 for (var windows_1 = __values(windows), windows_1_1 = windows_1.next(); !windows_1_1.done; windows_1_1 = windows_1.next()) {
@@ -42340,7 +40927,7 @@ function windowTime(windowTimeSpan) {
             cb(subscriber);
             subscriber.unsubscribe();
         };
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             loop(function (record) {
                 record.window.next(value);
                 maxWindowSize <= ++record.seen && closeWindow(record);
@@ -42390,7 +40977,7 @@ function windowToggle(openings, closingSelector) {
             }
             subscriber.error(err);
         };
-        innerFrom_1.innerFrom(openings).subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (openValue) {
+        innerFrom_1.innerFrom(openings).subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (openValue) {
             var window = new Subject_1.Subject();
             windows.push(window);
             var closingSubscription = new Subscription_1.Subscription();
@@ -42408,9 +40995,9 @@ function windowToggle(openings, closingSelector) {
                 return;
             }
             subscriber.next(window.asObservable());
-            closingSubscription.add(closingNotifier.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, closeWindow, noop_1.noop, handleError)));
+            closingSubscription.add(closingNotifier.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, closeWindow, noop_1.noop, handleError)));
         }, noop_1.noop));
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             var e_1, _a;
             var windowsCopy = windows.slice();
             try {
@@ -42475,10 +41062,10 @@ function windowWhen(closingSelector) {
                 handleError(err);
                 return;
             }
-            closingNotifier.subscribe((closingSubscriber = new OperatorSubscriber_1.OperatorSubscriber(subscriber, openWindow, openWindow, handleError)));
+            closingNotifier.subscribe((closingSubscriber = OperatorSubscriber_1.createOperatorSubscriber(subscriber, openWindow, openWindow, handleError)));
         };
         openWindow();
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) { return window.next(value); }, function () {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) { return window.next(value); }, function () {
             window.complete();
             subscriber.complete();
         }, handleError, function () {
@@ -42538,7 +41125,7 @@ function withLatestFrom() {
         var hasValue = inputs.map(function () { return false; });
         var ready = false;
         var _loop_1 = function (i) {
-            innerFrom_1.innerFrom(inputs[i]).subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+            innerFrom_1.innerFrom(inputs[i]).subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
                 otherValues[i] = value;
                 if (!ready && !hasValue[i]) {
                     hasValue[i] = true;
@@ -42549,7 +41136,7 @@ function withLatestFrom() {
         for (var i = 0; i < len; i++) {
             _loop_1(i);
         }
-        source.subscribe(new OperatorSubscriber_1.OperatorSubscriber(subscriber, function (value) {
+        source.subscribe(OperatorSubscriber_1.createOperatorSubscriber(subscriber, function (value) {
             if (ready) {
                 var values = __spreadArray([value], __read(otherValues));
                 subscriber.next(project ? project.apply(void 0, __spreadArray([], __read(values))) : values);
@@ -43737,13 +42324,16 @@ var __spreadArray = (this && this.__spreadArray) || function (to, from) {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.intervalProvider = void 0;
 exports.intervalProvider = {
-    setInterval: function () {
+    setInterval: function (handler, timeout) {
         var args = [];
-        for (var _i = 0; _i < arguments.length; _i++) {
-            args[_i] = arguments[_i];
+        for (var _i = 2; _i < arguments.length; _i++) {
+            args[_i - 2] = arguments[_i];
         }
         var delegate = exports.intervalProvider.delegate;
-        return ((delegate === null || delegate === void 0 ? void 0 : delegate.setInterval) || setInterval).apply(void 0, __spreadArray([], __read(args)));
+        if (delegate === null || delegate === void 0 ? void 0 : delegate.setInterval) {
+            return delegate.setInterval.apply(delegate, __spreadArray([handler, timeout], __read(args)));
+        }
+        return setInterval.apply(void 0, __spreadArray([handler, timeout], __read(args)));
     },
     clearInterval: function (handle) {
         var delegate = exports.intervalProvider.delegate;
@@ -43816,13 +42406,16 @@ var __spreadArray = (this && this.__spreadArray) || function (to, from) {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.timeoutProvider = void 0;
 exports.timeoutProvider = {
-    setTimeout: function () {
+    setTimeout: function (handler, timeout) {
         var args = [];
-        for (var _i = 0; _i < arguments.length; _i++) {
-            args[_i] = arguments[_i];
+        for (var _i = 2; _i < arguments.length; _i++) {
+            args[_i - 2] = arguments[_i];
         }
         var delegate = exports.timeoutProvider.delegate;
-        return ((delegate === null || delegate === void 0 ? void 0 : delegate.setTimeout) || setTimeout).apply(void 0, __spreadArray([], __read(args)));
+        if (delegate === null || delegate === void 0 ? void 0 : delegate.setTimeout) {
+            return delegate.setTimeout.apply(delegate, __spreadArray([handler, timeout], __read(args)));
+        }
+        return setTimeout.apply(void 0, __spreadArray([handler, timeout], __read(args)));
     },
     clearTimeout: function (handle) {
         var delegate = exports.timeoutProvider.delegate;
@@ -44672,7 +43265,7 @@ var bufferToggle_1 = __nccwpck_require__(83781);
 Object.defineProperty(exports, "bufferToggle", ({ enumerable: true, get: function () { return bufferToggle_1.bufferToggle; } }));
 var bufferWhen_1 = __nccwpck_require__(82855);
 Object.defineProperty(exports, "bufferWhen", ({ enumerable: true, get: function () { return bufferWhen_1.bufferWhen; } }));
-var catchError_1 = __nccwpck_require__(8869);
+var catchError_1 = __nccwpck_require__(37765);
 Object.defineProperty(exports, "catchError", ({ enumerable: true, get: function () { return catchError_1.catchError; } }));
 var combineAll_1 = __nccwpck_require__(88817);
 Object.defineProperty(exports, "combineAll", ({ enumerable: true, get: function () { return combineAll_1.combineAll; } }));
