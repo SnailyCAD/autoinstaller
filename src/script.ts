@@ -52,6 +52,12 @@ async function main() {
   const cloned = await cloneProject(projectDir);
   if (!cloned) return;
 
+  const answers = await askEnvQuestions();
+
+  if (__IS_DEV__) {
+    console.log({ answers });
+  }
+
   // install dependencies
   console.log("Installing dependencies... (this may take a few minutes)");
   execSync("yarn", { cwd: projectDir });
@@ -70,12 +76,6 @@ async function main() {
 
   await fs.copyFileSync(envExampleFile, envFileDestination);
   console.log(".env copied");
-
-  const answers = await askEnvQuestions();
-
-  if (__IS_DEV__) {
-    console.log({ answers });
-  }
 
   // update .env file with answers
   console.log("Updating .env file...");

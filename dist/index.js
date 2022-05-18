@@ -48864,6 +48864,10 @@ async function main() {
     const cloned = await (0, cloneProject_1.cloneProject)(projectDir);
     if (!cloned)
         return;
+    const answers = await (0, envQuestions_1.askEnvQuestions)();
+    if (__IS_DEV__) {
+        console.log({ answers });
+    }
     // install dependencies
     console.log("Installing dependencies... (this may take a few minutes)");
     (0, node_child_process_1.execSync)("yarn", { cwd: projectDir });
@@ -48879,10 +48883,6 @@ async function main() {
     }
     await node_fs_1.default.copyFileSync(envExampleFile, envFileDestination);
     console.log(".env copied");
-    const answers = await (0, envQuestions_1.askEnvQuestions)();
-    if (__IS_DEV__) {
-        console.log({ answers });
-    }
     // update .env file with answers
     console.log("Updating .env file...");
     await (0, updateEnvFile_1.updateEnvFile)(projectDir, answers);
