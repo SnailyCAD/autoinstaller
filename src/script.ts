@@ -17,7 +17,7 @@ main()
     process.exit(1);
   });
 
-async function main() {
+async function main(): void {
   if (__IS_DEV__) {
     fs.rmSync("snaily-cadv4", { recursive: true, force: true });
   }
