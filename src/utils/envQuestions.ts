@@ -11,7 +11,7 @@ export type ENV_KEYS =
   | "NEXT_PUBLIC_PROD_ORIGIN"
   | "DOMAIN";
 
-function requiredField(input: string) {
+function requiredField(input: string): string | boolean {
   if (input.toString().trim() === "") {
     return "You must enter a value.";
   }
@@ -19,7 +19,7 @@ function requiredField(input: string) {
   return true;
 }
 
-export async function askEnvQuestions() {
+export async function askEnvQuestions(): Promise<Record<ENV_KEYS, string | number>> {
   const answers = await inquirer.prompt<Record<ENV_KEYS, string | number>>([
     {
       name: "POSTGRES_PASSWORD",
