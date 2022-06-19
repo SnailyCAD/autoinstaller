@@ -25,7 +25,7 @@ export async function cloneProject(projectDir: string) {
   }
 }
 
-function foundGitVersion(gitVersion: string) {
+function foundGitVersion(gitVersion: string): boolean {
   const regex = /git\sversion\s[0-9]{0,3}.[0-9]{0,3}.[0-9]{0,3}/;
 
   return !!gitVersion.match(regex);
