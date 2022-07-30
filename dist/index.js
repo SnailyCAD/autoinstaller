@@ -48955,6 +48955,7 @@ function requiredField(input) {
     return true;
 }
 async function askEnvQuestions() {
+    console.log("\nNote: Information can be found at: https://cad-docs.caspertheghost.me/docs/installations/methods/standalone#31-env-info\n");
     const answers = await inquirer_1.default.prompt([
         {
             name: "POSTGRES_PASSWORD",

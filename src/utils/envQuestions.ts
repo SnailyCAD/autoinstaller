@@ -20,6 +20,9 @@ function requiredField(input: string) {
 }
 
 export async function askEnvQuestions() {
+
+  console.log("\nNote: Information can be found at: https://cad-docs.caspertheghost.me/docs/installations/methods/standalone#31-env-info\n")
+
   const answers = await inquirer.prompt<Record<ENV_KEYS, string | number>>([
     {
       name: "POSTGRES_PASSWORD",
