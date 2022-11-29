@@ -100,7 +100,7 @@ export async function askEnvQuestions() {
     {
       name: "DOMAIN",
       type: "input",
-      message: "If you're using a (sub)domain, what's your top level domain? (Example: mysite.com)",
+      message: "If you're using a (sub)domain, what's your root domain? (Example: mysite.com)",
     },
   ]);
 

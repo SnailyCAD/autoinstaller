@@ -48838,7 +48838,9 @@ const __IS_DEV__ = process.env.NODE_ENV === "development";
 main()
     .then(() => process.exit(0))
     .catch((e) => {
-    console.error(e);
+    const stdout = e?.stdout;
+    const message = Buffer.from(stdout).toString("utf8");
+    console.error(message || e);
     process.exit(1);
 });
 async function main() {
@@ -49031,7 +49033,7 @@ async function askEnvQuestions() {
         {
             name: "DOMAIN",
             type: "input",
-            message: "If you're using a (sub)domain, what's your top level domain? (Example: mysite.com)",
+            message: "If you're using a (sub)domain, what's your root domain? (Example: mysite.com)",
         },
     ]);
     return answers;
