@@ -10,6 +10,7 @@ export async function updateEnvFile(
   let fileContents = fs.readFileSync(envFilePath, { encoding: "utf-8" });
 
   // regex from: https://regexr.com/6cmr2
+  // this regex is used to match .env value pairs
   const regex = /[\S]\w+="([^"\\]*(?:\\.[^"\\]*)*)"/g;
   const matches = fileContents.matchAll(regex);
 
