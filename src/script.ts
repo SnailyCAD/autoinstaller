@@ -93,6 +93,6 @@ async function main() {
 
   console.log(`>> SnailyCADv4 was successfully installed and setup.
 
->> follow these instructions to start SnailyCADv4: https://cad-docs.netlify.app/install/methods/standalone#starting-snailycadv4
+>> follow these instructions to start SnailyCADv4: https://docs.snailycad.org/docs/installations/methods/autoinstaller#starting-snailycad
 `);
 }
