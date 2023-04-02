@@ -26,6 +26,7 @@ async function main() {
   }
 
   const { input } = meow("help", {
+    importMeta: import.meta,
     flags: {
       help: { type: "boolean", default: false, alias: "h" },
       version: { type: "boolean", default: false, alias: "v" },

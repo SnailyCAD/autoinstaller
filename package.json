@@ -1,9 +1,10 @@
 {
   "name": "autoinstaller",
+  "type": "module",
   "version": "1.0.0",
-  "main": "index.js",
   "scripts": {
-    "build": "ncc build ./src/script.ts -t -o dist/"
+    "build": "ncc build ./src/script.ts -t -o dist/",
+    "postbuild": "mv dist/index.js dist/index.js"
   },
   "author": {
     "name": "Dev-CasperTheGhost",
@@ -11,14 +12,14 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "@types/inquirer": "^8.2.1",
-    "@types/node": "^18.11.9",
+    "@types/inquirer": "^9.0.3",
+    "@types/node": "^18.15.11",
     "dotenv": "^16.0.3",
-    "@vercel/ncc": "^0.34.0",
-    "typescript": "^4.9.3"
+    "@vercel/ncc": "^0.36.1",
+    "typescript": "^5.0.3"
   },
   "dependencies": {
-    "inquirer": "^8.2.5",
-    "meow": "^9.0.0"
+    "inquirer": "^9.1.5",
+    "meow": "^11.0.0"
   }
 }
