@@ -7,7 +7,7 @@ A script to install SnailyCAD a bit quicker with interactive prompts in the cons
 _`curl` is supported on all operating systems._
 
 ```sh
-curl https://raw.githubusercontent.com/SnailyCAD/autoinstaller/main/dist > autoinstaller
+curl https://raw.githubusercontent.com/SnailyCAD/autoinstaller/main/dist/index.js > autoinstaller.mjs
 
-node autoinstaller/index.js
+node autoinstaller.mjs
 ```

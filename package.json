@@ -3,8 +3,7 @@
   "type": "module",
   "version": "1.0.0",
   "scripts": {
-    "build": "ncc build ./src/script.ts -t -o dist/",
-    "postbuild": "mv dist/index.js dist/index.js"
+    "build": "ncc build ./src/script.ts -t -o dist/"
   },
   "author": {
     "name": "Dev-CasperTheGhost",

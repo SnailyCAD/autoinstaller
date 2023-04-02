@@ -4,9 +4,9 @@ import fs from "node:fs";
 import { execSync } from "node:child_process";
 import meow from "meow";
 import inquirer from "inquirer";
-import { cloneProject } from "./utils/cloneProject";
-import { askEnvQuestions } from "./utils/envQuestions";
-import { updateEnvFile } from "./utils/updateEnvFile";
+import { cloneProject } from "./utils/cloneProject.js";
+import { askEnvQuestions } from "./utils/envQuestions.js";
+import { updateEnvFile } from "./utils/updateEnvFile.js";
 
 const __IS_DEV__ = process.env.NODE_ENV === "development";
 

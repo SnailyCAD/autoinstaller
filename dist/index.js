@@ -49265,9 +49265,9 @@ const node_fs_1 = __importDefault(__nccwpck_require__(87561));
 const node_child_process_1 = __nccwpck_require__(17718);
 const meow_1 = __importDefault(__nccwpck_require__(7514));
 const inquirer_1 = __importDefault(__nccwpck_require__(92602));
-const cloneProject_1 = __nccwpck_require__(23149);
-const envQuestions_1 = __nccwpck_require__(49555);
-const updateEnvFile_1 = __nccwpck_require__(59305);
+const cloneProject_js_1 = __nccwpck_require__(23149);
+const envQuestions_js_1 = __nccwpck_require__(49555);
+const updateEnvFile_js_1 = __nccwpck_require__(59305);
 const __IS_DEV__ = process.env.NODE_ENV === "development";
 main()
     .then(() => process.exit(0))
@@ -49301,10 +49301,10 @@ async function main() {
     if (__IS_DEV__) {
         console.log({ projectDir });
     }
-    const cloned = await (0, cloneProject_1.cloneProject)(projectDir);
+    const cloned = await (0, cloneProject_js_1.cloneProject)(projectDir);
     if (!cloned)
         return;
-    const answers = await (0, envQuestions_1.askEnvQuestions)();
+    const answers = await (0, envQuestions_js_1.askEnvQuestions)();
     if (__IS_DEV__) {
         console.log({ answers });
     }
@@ -49325,7 +49325,7 @@ async function main() {
     console.log(".env copied");
     // update .env file with answers
     console.log("Updating .env file...");
-    await (0, updateEnvFile_1.updateEnvFile)(projectDir, answers);
+    await (0, updateEnvFile_js_1.updateEnvFile)(projectDir, answers);
     // copy .env file to client & api
     (0, node_child_process_1.execSync)("node scripts/copy-env.mjs --client --api", { cwd: projectDir });
     // build packages
