@@ -3,6 +3,9 @@
   "type": "module",
   "version": "1.0.0",
   "scripts": {
+    "format": "prettier --write \"**/*.{js,jsx,json,ts,tsx,yml,md}\" --ignore-path .eslintignore",
+    "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit",
     "build": "ncc build ./src/script.ts -t -o dist/"
   },
   "author": {
@@ -11,6 +14,9 @@
   },
   "license": "MIT",
   "devDependencies": {
+    "@casper124578/eslint-config": "^6.0.0",
+    "eslint": "^8.37.0",
+    "prettier": "^2.8.7",
     "@types/inquirer": "^9.0.3",
     "@types/node": "^18.15.11",
     "dotenv": "^16.0.3",
@@ -20,5 +26,12 @@
   "dependencies": {
     "inquirer": "^9.1.5",
     "meow": "^11.0.0"
+  },
+  "prettier": {
+    "semi": true,
+    "trailingComma": "all",
+    "singleQuote": false,
+    "printWidth": 120,
+    "tabWidth": 2
   }
 }
