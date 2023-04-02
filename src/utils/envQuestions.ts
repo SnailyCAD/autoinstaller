@@ -68,7 +68,8 @@ export async function askEnvQuestions() {
     {
       name: "CORS_ORIGIN_URL",
       type: "input",
-      message: "Where will the client (UI/interface) be hosted at? (Example: http://99.99.0.190:3000)",
+      message:
+        "Where will the client (UI/interface) be hosted at? (Example: http://99.99.0.190:3000)",
       validate: (input: string) => {
         if (input.toString().trim() === "") {
           return "You must enter a value.";

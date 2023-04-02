@@ -1,8 +1,11 @@
-import { ENV_KEYS } from "./envQuestions";
+import { ENV_KEYS } from "./envQuestions.js";
 import fs from "node:fs";
 import path from "node:path";
 
-export async function updateEnvFile(projectDir: string, answers: Record<ENV_KEYS, string | number>) {
+export async function updateEnvFile(
+  projectDir: string,
+  answers: Record<ENV_KEYS, string | number>,
+) {
   const envFilePath = path.resolve(projectDir, ".env");
   let fileContents = fs.readFileSync(envFilePath, { encoding: "utf-8" });
 
@@ -11,7 +14,7 @@ export async function updateEnvFile(projectDir: string, answers: Record<ENV_KEYS
   const regex = /[\S]\w+="([^"\\]*(?:\\.[^"\\]*)*)"/g;
   const matches = fileContents.matchAll(regex);
 
-  [...matches]?.forEach(([match]) => {
+  [...matches].forEach(([match]) => {
     const [key] = extractKeyAndValue(match!);
 
     const answer = answers[key.replace("=", "") as ENV_KEYS];
