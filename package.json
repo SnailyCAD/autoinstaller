@@ -14,18 +14,18 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "@casper124578/eslint-config": "^6.0.0",
-    "eslint": "^8.37.0",
-    "prettier": "^2.8.7",
+    "@casperiv/eslint-config": "^8.0.0",
+    "eslint": "^8.48.0",
+    "prettier": "^3.0.3",
     "@types/inquirer": "^9.0.3",
-    "@types/node": "^18.15.11",
-    "dotenv": "^16.0.3",
+    "@types/node": "^20.5.8",
+    "dotenv": "^16.3.1",
     "@vercel/ncc": "^0.36.1",
-    "typescript": "^5.0.3"
+    "typescript": "^5.2.2"
   },
   "dependencies": {
-    "inquirer": "^9.1.5",
-    "meow": "^11.0.0"
+    "inquirer": "^9.2.10",
+    "meow": "^12.1.1"
   },
   "prettier": {
     "semi": true,

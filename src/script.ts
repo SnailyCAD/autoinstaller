@@ -64,7 +64,7 @@ async function main() {
 
   // install dependencies
   console.log("Installing dependencies... (this may take a few minutes)");
-  execSync("yarn", { cwd: projectDir });
+  execSync("pnpm install", { cwd: projectDir });
 
   // copy .env file
   console.log("Copying .env file...");
@@ -90,7 +90,7 @@ async function main() {
 
   // build packages
   console.log("Building packages... (this may take a few minutes)");
-  execSync("yarn turbo run build", { cwd: projectDir });
+  execSync("pnpm run build", { cwd: projectDir });
 
   console.log(`>> SnailyCADv4 was successfully installed and setup.
 
